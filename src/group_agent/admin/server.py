@@ -1,5 +1,6 @@
 """Authenticated, same-origin local management service."""
 
+from collections.abc import Mapping
 from contextlib import asynccontextmanager, contextmanager, closing
 import json
 import mimetypes
@@ -13,6 +14,7 @@ from fastapi import FastAPI, Request, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from .. import received_groups
 from ..config import ConfigError
 from ..config_service import ConfigService, load_bundle, materialize, schema
 from ..runtime import RuntimeController, application_plan
@@ -158,11 +160,60 @@ def create_app(instance, *, demo=False, allowed_hosts=None, controller_options=N
             "credentials": draft.settings.credentials.status(),
         }
 
+    def group_catalog():
+        with database() as con:
+            rows = received_groups.directory(con, controller.settings.bot_id)
+        return [row for row in rows if row["group_id"] not in controller.settings.blocked_groups]
+
+    def validate_profiles(profiles):
+        if not isinstance(profiles, Mapping):
+            raise ConfigError("群个性化设置格式有误")
+        current = active().settings.group_profiles
+        changed = {gid for gid, profile in profiles.items() if current.get(gid) != profile}
+        if changed and not changed <= {
+            r["group_id"] for r in group_catalog() if r["membership"] == "present"
+        }:
+            raise ConfigError("请选择已收到消息且已确认在群的群聊")
+
+    @app.get("/api/received-groups")
+    def get_received_groups():
+        return group_catalog()
+
+    @app.post("/api/received-groups/{gid}/reply")
+    async def switch_group(gid: str, request: Request):
+        enabled = (await body(request)).get("enabled")
+        if not isinstance(enabled, bool):
+            raise ConfigError("请选择本群回复状态")
+        async with controller.lock:
+            session = controller.session
+            if not session or controller.state != "running" or (enabled and session.pause.paused):
+                raise ConfigError("请先在总览启动或恢复全局回复")
+            orch = session.orchestrator
+            con, bot = orch.store.con, controller.settings.bot_id
+            row = con.execute(
+                "SELECT membership FROM received_groups WHERE bot_id=? AND group_id=?", (bot, gid)
+            ).fetchone()
+            if not row or (
+                enabled and (row[0] != "present" or gid in orch.access.snapshot.blocked_groups)
+            ):
+                raise ConfigError("该群目前不可启动")
+            with con:
+                if enabled:
+                    con.execute(
+                        "UPDATE received_groups SET enabled=1 WHERE bot_id=? AND group_id=?",
+                        (bot, gid),
+                    )
+                else:
+                    received_groups.stop_boundary(con, bot, gid)
+                    orch.cancel_group(gid)
+            return {"enabled": enabled}
+
     @app.post("/api/config/draft")
     async def save_draft(request: Request):
         data = await body(request)
         if not isinstance(data.get("data"), dict) or not isinstance(data.get("prompts", {}), dict):
             raise ConfigError("配置与提示词必须为对象")
+        validate_profiles(data["data"].get("group_profiles", {}))
         draft = service.save_editor(data["data"], data.get("prompts", {}), data.get("expected"))
         effective = load_bundle(draft.path, overrides)
         return {
@@ -175,6 +226,7 @@ def create_app(instance, *, demo=False, allowed_hosts=None, controller_options=N
         candidate = load_bundle(source, overrides)
 
         def publish():
+            validate_profiles(candidate.settings.group_profiles)
             if digest and load_bundle(source).revision != digest:
                 raise ConfigError("draft: changed; reload before applying")
             service.publish(source, expected, rollback_of=rollback_of)

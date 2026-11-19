@@ -36,88 +36,7 @@ const descriptions = {
   storage: "查看数据库占用，预览保留策略和创建数据库快照。",
   system: "管理连接凭据、配置版本与实例设置。",
 };
-const labels = {
-  breaker_failures: "熔断连续失败次数",
-  breaker_cooldown_s: "熔断冷却时间（秒）",
-  bot_id: "机器人账号",
-  owner_id: "主人账号",
-  blocked_users: "屏蔽用户",
-  blocked_groups: "屏蔽群聊",
-  daily_cost_cny: "每日普通用户预算（元）",
-  deadline_seconds: "请求总时限（秒）",
-  context_messages: "上下文消息上限",
-  global_active: "全局运行并发",
-  user_active: "每用户运行并发",
-  global_queue: "全局等待队列",
-  user_queue: "每用户等待队列",
-  degrade_ratio: "降级阈值比例",
-  cap_ratio: "普通用户停止阈值比例",
-  web_enabled: "允许联网",
-  answer_tool_loop: "启用回答工具循环",
-  decision_mode: "判断模式",
-  answer_thinking: "回答思考级别",
-  answer_same_model_retry: "同模型重试",
-  live_send: "发送群聊回复",
-  owner_control: "群内主人控制指令",
-  fallback_reply: "失败时固定回复",
-  processing_reaction: "处理中表情",
-  self_sync: "同步机器人消息",
-  db_path: "数据库路径",
-  model: "模型 ID",
-  protocol: "协议",
-  api_key_env: "密钥引用名称",
-  base_url: "服务地址",
-  base_url_env: "服务地址变量",
-  project_env: "云项目变量",
-  timeout_seconds: "调用超时（秒）",
-  price_input: "输入单价 / 百万 token",
-  price_output: "输出单价 / 百万 token",
-  price_cached_input: "缓存输入单价",
-  price_currency: "计价币种",
-  thinking_level: "思考级别",
-  thinking_budget_tokens: "思考 token 预算",
-  max_output_tokens: "最大输出 token",
-  channel: "计费渠道",
-  connection: "供应商连接",
-  answer: "回答模型",
-  decision: "判断模型",
-  fallback: "备用模型",
-  search: "搜索主模型",
-  fetch: "网页读取主模型",
-  search_fallback: "搜索备用模型",
-  fetch_fallback: "网页读取备用模型",
-  price_per_call: "每次搜索/读取价格（元）",
-  web_searches: "每次请求搜索上限",
-  web_reads: "每次请求读取上限",
-  tool_timeout_seconds: "工具超时（秒）",
-  finish_reserve_seconds: "回答预留时间（秒）",
-  persona: "人格",
-  evidence: "取证规则",
-  reply_contract: "输出格式",
-  tool_decision: "工具判断",
-  usd_cny: "美元兑人民币",
-  google_search_usd_per_1000: "Google 搜索美元单价 / 千次",
-  google_free_queries_per_month: "每月免费查询额度",
-  billing_cycle_day: "账单周期起始日",
-  recent_hours: "普通聊天保留小时",
-  related_days: "关联请求保留天数",
-  cleanup_interval_minutes: "清理间隔（分钟）",
-  media_max_mb: "媒体容量上限（MB）",
-  disabled_groups: "关闭普通消息采集的群",
-  source: "凭据来源",
-  key: "凭据变量名",
-  path: "凭据文件路径",
-  location: "区域",
-  vertex: "使用 Vertex",
-  api_version: "API 版本",
-};
-const modeNames = {
-  immediate: "立即生效",
-  new_run: "新请求生效",
-  next_cleanup: "下一轮清理",
-  maintenance: "需停止并重新启动",
-  disable_now_enable_maintenance: "关闭立即生效，启用需重新启动",
-};
+
 const stateNames = {
   running: "运行中",
   paused: "已暂停",
@@ -158,7 +77,7 @@ async function api(path, body) {
   const data = await r.json();
   if (!r.ok) {
     if (r.status === 401 && path !== "login") showLogin();
-    throw Error(data.error || "请求失败");
+    throw Error(settingsText.error(data.error) || "请求失败");
   }
   return data;
 }
@@ -241,6 +160,7 @@ $("#nav").onclick = (e) => {
   if (b) navigate(b.dataset.page);
 };
 async function enter() {
+  await settingsText.load();
   status = await api("status");
   cfg = await api("config");
   $("#login").hidden = true;
@@ -644,6 +564,11 @@ async function render() {
     };
     return;
   }
+  if (page === "profiles") {
+    const rows = await api("received-groups");
+    if (version !== renderVersion) return;
+    groupChoices = rows;
+  }
   renderEditor();
 }
 function field(path, value, definition = {}) {
@@ -659,10 +584,15 @@ function field(path, value, definition = {}) {
   const data = esc(JSON.stringify(path));
   let input;
   if (isBool)
-    input = `<select data-path="${data}" data-kind="bool" id="${id}"><option value="true" ${value ? "selected" : ""}>开启</option><option value="false" ${!value ? "selected" : ""}>关闭</option></select>`;
-  else
+    input = `<select data-path="${data}" data-kind="bool" id="${id}"><option value="true" ${value ? "selected" : ""}>${esc(settingsText.t("common.on"))}</option><option value="false" ${!value ? "selected" : ""}>${esc(settingsText.t("common.off"))}</option></select>`;
+  else if (settingsText.enums[key]) {
+    const options = [
+      ...new Set(["", ...settingsText.enums[key], ...(value ? [value] : [])]),
+    ];
+    input = `<select data-path="${data}" id="${id}">${options.map((v) => `<option value="${esc(v)}" ${v === (value ?? "") ? "selected" : ""}>${esc(v ? settingsText.value(path, v) : settingsText.t("common.empty"))}</option>`).join("")}</select>`;
+  } else
     input = `<input data-path="${data}" data-kind="${isArray ? "array" : isNum ? "number" : "text"}" id="${id}" ${isNum ? 'type="number" step="any"' : ""} value="${esc(isArray ? (value || []).join(", ") : value)}" placeholder="${isArray ? "多个值用逗号分隔" : "未设置"}">`;
-  return `<div class="field"><label for="${id}">${esc(labels[key] || key)}</label>${input}<small>${esc(modeNames[definition.apply] || "")}${Object.hasOwn(cfg.overrides, path.join(".")) ? " · 被启动参数覆盖" : ""}</small></div>`;
+  return `<div class="field"><label for="${id}">${esc(settingsText.label(path))}</label>${input}<small>${esc([settingsText.t("help." + settingsText.key(path)), settingsText.t("apply." + definition.apply)].filter(Boolean).join(" · "))}${Object.hasOwn(cfg.overrides, path.join(".")) ? " · " + esc(settingsText.t("common.override")) : ""}</small></div>`;
 }
 function section(group, title, keys) {
   const values = cfg.data[group] || {},
@@ -696,15 +626,62 @@ function objects(group, title) {
   }
   return `<div class="panel-head"><h2>${title}</h2><button class="secondary add-object" data-group="${group}">＋ 添加</button></div>${html || empty("尚未添加，点击上方按钮创建")}`;
 }
+let groupChoices = [],
+  selectedGroup = "";
+function groupLabel(row) {
+  const name = row.name || "群名待同步";
+  if (!row.name || groupChoices.filter((g) => g.name === row.name).length > 1) {
+    let size = 4;
+    while (
+      size < row.group_id.length &&
+      groupChoices.some(
+        (g) =>
+          g.group_id !== row.group_id &&
+          g.name === row.name &&
+          g.group_id.slice(-size) === row.group_id.slice(-size),
+      )
+    )
+      size++;
+    return `${name} · ${row.group_id.slice(-size)}`;
+  }
+  return name;
+}
 function profileEditor() {
   const profiles = cfg.data.group_profiles || {};
   const roles = cfg.data.model_roles || {};
   const aliases = Object.entries(cfg.data.models || {})
     .filter(([, m]) => m && typeof m === "object" && m.protocol !== "systemone")
     .map(([id]) => id);
-  let html =
-    '<form id="add-profile" class="inline-form"><input id="profile-id" placeholder="群号" required><button class="secondary">添加群</button></form>';
-  for (const [gid, profile] of Object.entries(profiles)) {
+  if (!groupChoices.length)
+    return empty("机器人收到群消息后，可在这里选择群聊。");
+  const row =
+    groupChoices.find((g) => g.group_id === selectedGroup) || groupChoices[0];
+  selectedGroup = row.group_id;
+  const gid = selectedGroup,
+    profile = profiles[gid] || {};
+  const options = groupChoices
+    .map(
+      (g) =>
+        `<option value="${esc(g.group_id)}" ${g.group_id === gid ? "selected" : ""}>${esc(groupLabel(g))}</option>`,
+    )
+    .join("");
+  let html = `<label class="monitor-filter">选择群聊<select id="profile-id">${options}</select></label>`;
+  const running = status.state === "running";
+  const confirmed = row.membership === "present";
+  const state = !confirmed
+    ? "群成员资格待确认"
+    : !running
+      ? `全局${stateNames[status.state] || "已停止"}`
+      : row.enabled
+        ? "已开启"
+        : "已停止";
+  html += panel(
+    settingsText.t("group.reply"),
+    `<span>${esc(state)}</span>`,
+    `<button id="group-switch" class="secondary" ${(!running && !(status.state === "paused" && row.enabled)) || (!row.enabled && !confirmed) ? "disabled" : ""}>${row.enabled ? "停止本群回复" : "启动本群回复"}</button>`,
+  );
+  if (!confirmed) return html;
+  {
     const enabled = profile.enabled === true;
     const scoped = (section, key) =>
       `data-profile="${esc(gid)}" data-section="${section}" data-key="${key}"`;
@@ -719,45 +696,53 @@ function profileEditor() {
             ? roles.answer || "gemini"
             : "gemini");
       fields.push(
-        `<label class="field">${esc(labels[key] || key)}<select ${scoped("model_roles", key)}><option value="">继承全局 · ${esc(inherited)}</option>${aliases.map((id) => `<option ${value === id ? "selected" : ""} value="${esc(id)}">本群 · ${esc(id)}</option>`).join("")}</select></label>`,
+        `<label class="field">${esc(settingsText.label(["model_roles", key]))}<select ${scoped("model_roles", key)}><option value="">继承全局 · ${esc(inherited)}</option>${aliases.map((id) => `<option ${value === id ? "selected" : ""} value="${esc(id)}">本群 · ${esc(id)}</option>`).join("")}</select></label>`,
       );
     }
     for (const key of Object.keys(cfg.schema.prompts)) {
       const value = profile.prompts?.[key] || "";
       const inherited = cfg.prompts[key] || cfg.prompt_defaults[key] || "";
       fields.push(
-        `<label class="field">${esc(labels[key] || key)} · ${value ? "本群覆盖" : "继承全局"}<textarea ${scoped("prompts", key)} placeholder="${esc(inherited)}">${esc(value)}</textarea></label>`,
+        `<label class="field">${esc(settingsText.label(["prompts", key]))} · ${value ? "本群覆盖" : "继承全局"}<textarea ${scoped("prompts", key)} placeholder="${esc(inherited)}">${esc(value)}</textarea></label>`,
       );
     }
     fields.push(
-      `<label class="field">本群每日限额（元）<input type="number" step="any" min="0" ${scoped("", "daily_cost_cny")} value="${esc(profile.daily_cost_cny)}" placeholder="仅使用全局预算"></label>`,
+      `<label class="field">${esc(settingsText.label(["group_profiles", gid, "daily_cost_cny"]))}<input type="number" step="any" min="0" ${scoped("", "daily_cost_cny")} value="${esc(profile.daily_cost_cny)}" placeholder="仅使用全局预算"></label>`,
     );
     html += panel(
-      `群 ${esc(gid)}`,
-      `<label><input type="checkbox" ${scoped("", "enabled")} ${enabled ? "checked" : ""}> 启用个性化</label>${enabled ? '<p class="muted">清空字段即可恢复继承。</p>' + fields.join("") : ""}`,
-      `<button class="delete" data-group="group_profiles" data-delete="${esc(gid)}">移除</button>`,
+      groupLabel(row),
+      `<label><input type="checkbox" ${scoped("", "enabled")} ${enabled ? "checked" : ""}> ${esc(settingsText.t("group_profiles.*.enabled"))}</label>${enabled ? '<p class="muted">清空字段即可恢复继承。</p>' + fields.join("") : ""}`,
+      profiles[gid]
+        ? `<button class="delete" data-group="group_profiles" data-delete="${esc(gid)}">清除群覆盖设置</button>`
+        : "",
     );
   }
   return html;
 }
 function bindProfiles() {
-  $("#add-profile").onsubmit = (e) => {
-    e.preventDefault();
-    const id = $("#profile-id").value.trim();
-    if (
-      !/^[A-Za-z0-9_-]{1,64}$/.test(id) ||
-      id in (cfg.data.group_profiles || {})
-    )
-      return toast("请输入未添加的群号");
-    (cfg.data.group_profiles ??= {})[id] = { enabled: false };
-    changed();
+  if (!$("#profile-id")) return;
+  $("#profile-id").onchange = (e) => {
+    selectedGroup = e.target.value;
     renderEditor();
+  };
+  $("#group-switch").onclick = async (e) => {
+    const row = groupChoices.find((g) => g.group_id === selectedGroup);
+    e.currentTarget.disabled = true;
+    try {
+      await api(`received-groups/${encodeURIComponent(row.group_id)}/reply`, {
+        enabled: !row.enabled,
+      });
+      toast(row.enabled ? "已停止本群回复" : "已启动本群回复");
+    } catch (err) {
+      toast(err.message);
+    }
+    if (page === "profiles") await navigate("profiles");
   };
   document.querySelectorAll("[data-profile]").forEach(
     (el) =>
       (el.onchange = () => {
         const { profile: gid, section, key } = el.dataset;
-        const profile = cfg.data.group_profiles[gid];
+        const profile = ((cfg.data.group_profiles ??= {})[gid] ??= {});
         const target = section ? (profile[section] ??= {}) : profile;
         if (el.type === "checkbox") target[key] = el.checked;
         else if (!el.value.trim()) delete target[key];
@@ -766,7 +751,7 @@ function bindProfiles() {
         changed();
         if (key === "enabled") renderEditor();
         else if (section === "prompts")
-          el.parentNode.firstChild.textContent = `${labels[key] || key} · ${target[key] ? "本群覆盖" : "继承全局"}`;
+          el.parentNode.firstChild.textContent = `${settingsText.label(["prompts", key])} · ${target[key] ? "本群覆盖" : "继承全局"}`;
       }),
   );
 }
@@ -777,8 +762,8 @@ function renderEditor() {
     html = Object.entries({ persona: cfg.default_persona, ...cfg.prompts })
       .map(([name, text]) =>
         panel(
-          labels[name] || name,
-          `<textarea class="prompt" data-prompt="${esc(name)}" aria-label="${esc(labels[name] || name)}">${esc(text)}</textarea>`,
+          settingsText.label(["prompts", name]),
+          `<textarea class="prompt" data-prompt="${esc(name)}" aria-label="${esc(settingsText.label(["prompts", name]))}">${esc(text)}</textarea>`,
           `<span class="badge">新请求生效</span>`,
         ),
       )
@@ -961,7 +946,7 @@ function renderEditor() {
         );
         modal(
           "添加参数",
-          `<select id="new-field" style="margin-top:20px">${names.map((n) => `<option value="${esc(n)}">${esc(labels[n] || n)} · ${esc(n)}</option>`).join("")}</select>`,
+          `<select id="new-field" style="margin-top:20px">${names.map((n) => `<option value="${esc(n)}">${esc(settingsText.label([group, "*", n]))}</option>`).join("")}</select>`,
           () => {
             const key = $("#new-field").value;
             if (!key) return;
@@ -988,7 +973,7 @@ function renderEditor() {
       ].filter((x) => !Object.hasOwn(cfg.prompts, x));
       modal(
         "添加提示词",
-        `<select id="prompt-name" style="margin-top:20px">${names.map((x) => `<option value="${x}">${labels[x] || x}</option>`).join("")}</select>`,
+        `<select id="prompt-name" style="margin-top:20px">${names.map((x) => `<option value="${x}">${esc(settingsText.label(["prompts", x]))}</option>`).join("")}</select>`,
         () => {
           const n = $("#prompt-name").value;
           if (n) {
@@ -1065,6 +1050,18 @@ function resultToast(r) {
     }[r.state] || "操作完成",
   );
 }
+function prettyChange(path) {
+  const [group, name] = path.split(".");
+  const owner =
+    group === "group_profiles"
+      ? groupChoices.find((r) => r.group_id === name)?.name || "本群"
+      : ["models", "connections", "credentials", "credential_refs"].includes(
+            group,
+          )
+        ? name
+        : "";
+  return [owner, settingsText.label(path)].filter(Boolean).join(" · ");
+}
 async function save(apply) {
   $("#save").disabled = $("#apply").disabled = true;
   try {
@@ -1084,7 +1081,7 @@ async function save(apply) {
     const rows = r.plan.changes;
     modal(
       "应用配置",
-      `${rows.length ? `<div class="table-wrap"><table><thead><tr><th>变更字段</th><th>原值 → 新值</th><th>生效时机</th></tr></thead><tbody>${rows.map((x) => `<tr><td>${esc(x.field)}</td><td>${esc(JSON.stringify(r.diff[x.field]?.before ?? null)?.slice(0, 300))}<br>→ ${esc(JSON.stringify(r.diff[x.field]?.after ?? null)?.slice(0, 300))}</td><td>${esc(modeNames[x.apply])}</td></tr>`).join("")}</tbody></table></div>` : empty("配置内容与当前运行版本一致")}${r.plan.maintenance ? '<div class="notice">包含维护类修改。将发布完整配置，停止引擎后重新启动时采用。</div>' : ""}`,
+      `${rows.length ? `<div class="table-wrap"><table><thead><tr><th>变更字段</th><th>原值 → 新值</th><th>生效时机</th></tr></thead><tbody>${rows.map((x) => `<tr><td>${esc(prettyChange(x.field))}</td><td>${esc(settingsText.value(x.field, r.diff[x.field]?.before).slice(0, 300))}<br>→ ${esc(settingsText.value(x.field, r.diff[x.field]?.after).slice(0, 300))}</td><td>${esc(settingsText.t("apply." + x.apply))}</td></tr>`).join("")}</tbody></table></div>` : empty("配置内容与当前运行版本一致")}${r.plan.maintenance ? '<div class="notice">包含维护类修改。将发布完整配置，停止引擎后重新启动时采用。</div>' : ""}`,
       async () => {
         const result = await api("config/apply", {
           expected: cfg.published_revision,
@@ -1107,8 +1104,23 @@ async function save(apply) {
 $("#save").onclick = () => save(false);
 $("#apply").onclick = () => save(true);
 async function refresh() {
+  const previous = status.state;
   status = await api("status");
   updateBadge();
+  if (
+    page === "profiles" &&
+    !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)
+  ) {
+    const rows = await api("received-groups");
+    if (
+      page === "profiles" &&
+      (previous !== status.state ||
+        JSON.stringify(rows) !== JSON.stringify(groupChoices))
+    ) {
+      groupChoices = rows;
+      renderEditor();
+    }
+  }
   if (
     ["overview", "requests"].includes(page) &&
     !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)

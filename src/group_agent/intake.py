@@ -151,7 +151,9 @@ class EventIntake:
         request = ReplyRequest(
             message, seq, parsed.platform_time, received_at, snapshot.is_owner(message.user_id)
         )
-        if self.paused is not None and self.paused():
+        if not self.store.allows_group_reply(message.bot_id, message.group_id, seq) or (
+            self.paused is not None and self.paused()
+        ):
             self.counts["paused_requests"] += 1  # recorded only: no run, no reaction
             return IntakeResult("trigger", message, seq, request)
         if self.sink is not None:

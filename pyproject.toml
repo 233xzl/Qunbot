@@ -44,7 +44,7 @@ packages = ["src/group_agent"]
 [tool.hatch.build.targets.sdist]
 include = [
     "/src/**/*.py", "/src/group_agent/admin/example.toml", "/src/group_agent/admin/static/*.html",
-    "/src/group_agent/admin/static/*.css", "/src/group_agent/admin/static/*.js", "/scripts/**/*.py",
+    "/src/group_agent/admin/static/*.css", "/src/group_agent/admin/static/*.js", "/src/group_agent/admin/static/*.json", "/scripts/**/*.py",
     "/tests/unit/*.py", "/tests/replay/cases/*.json", "/tests/replay/schema.json",
     "/tests/replay/route_exclusions.json", "/config/settings.example.toml",
     "/config/prompts.example/persona.md", "/config/credentials.example.txt",

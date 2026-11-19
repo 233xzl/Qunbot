@@ -246,7 +246,9 @@ class NewVersionCommand:
         return outcome
 
     def _blocked(self, group_id: str, user_id: str) -> bool:
-        return self.access.snapshot.is_blocked(group_id, user_id)
+        return not self.store.allows_group_reply(
+            self.access.bot_id, group_id
+        ) or self.access.snapshot.is_blocked(group_id, user_id)
 
     async def _question_row(self, command: Message, qid: str) -> dict | None:
         loop = asyncio.get_running_loop()

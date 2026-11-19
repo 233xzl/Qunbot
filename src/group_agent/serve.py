@@ -37,7 +37,7 @@ from .admission import AccessPolicy, RequestQueue
 from .backfill import ReplyBackfill
 from .config import ModelCredentials, Settings, load_model_credentials, load_snowluma_credentials
 from .gateway import READ_ONLY_ACTIONS, OneBotApi, OneBotGateway, RecallEvent, parse_event
-from .gateway import GatewayError
+from . import received_groups
 from .group_info import GroupInfoCache, GroupInfoTool
 from .intake import EventIntake
 from .knowledge_base import KnowledgeBase
@@ -371,6 +371,14 @@ async def _run_serve(
     def on_event(event: Any) -> None:
         result = holder["intake"].intake(event)
         holder["groups"].observe(event, settings.bot_id)
+        if (
+            result.status == "notice_group_decrease"
+            and str(event.get("user_id")) == settings.bot_id
+        ):
+            gid = str(event.get("group_id"))
+            with store.con:
+                received_groups.stop_boundary(store.con, settings.bot_id, gid, left=True)
+            holder["orchestrator"].cancel_group(gid)
         holder["command"].observe(result)
         if owner_control:
             holder["control"].observe(result)
@@ -571,37 +579,6 @@ async def _run_serve(
         for event in inject:
             on_event(event)
 
-    async def refresh_group_names() -> None:
-        # Refresh known groups off the message path. The UI only reads the local cache.
-        while not stop.is_set():
-            if gateway.connected:
-                rows = store.con.execute(
-                    "SELECT DISTINCT r.group_id FROM runs r LEFT JOIN group_names n "
-                    "ON n.bot_id=r.bot_id AND n.group_id=r.group_id WHERE r.bot_id=? "
-                    "AND r.group_id IS NOT NULL AND COALESCE(n.updated_at,0) < ?",
-                    (access.bot_id, time.time() - 86400),
-                ).fetchall()
-                for (gid,) in rows:
-                    if stop.is_set() or not gateway.connected:
-                        break
-                    if gid in access.snapshot.blocked_groups:
-                        continue
-                    try:
-                        info = await api.get_group_info(gid)
-                    except GatewayError:
-                        continue
-                    name = info.get("group_name")
-                    if isinstance(name, str) and name.strip():
-                        with store.con:
-                            store.con.execute(
-                                "INSERT OR REPLACE INTO group_names VALUES (?,?,?,?)",
-                                (access.bot_id, gid, name.strip()[:128], time.time()),
-                            )
-            try:
-                await asyncio.wait_for(stop.wait(), 30)
-            except TimeoutError:
-                pass
-
     async def stop_file_watch() -> None:
         while stop_file is not None and not stop.is_set():
             if stop_file.exists():
@@ -620,7 +597,13 @@ async def _run_serve(
         asyncio.create_task(stop_file_watch()),
     ]
     if not offline:
-        tasks.append(asyncio.create_task(refresh_group_names()))
+        tasks.append(
+            asyncio.create_task(
+                received_groups.sync_directory(
+                    stop, store, access, gateway, api, orchestrator.cancel_group
+                )
+            )
+        )
     if holder["sync"] is not None:
         tasks.append(asyncio.create_task(holder["sync"].run(stop)))
     if cleanup:

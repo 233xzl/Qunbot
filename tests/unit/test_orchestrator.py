@@ -835,3 +835,33 @@ def test_group_budget_reservations_midnight_and_hot_limits():
         assert usage.decision(False, "A") == ("normal", None)
     finally:
         CURRENT_GROUP.reset(token)
+
+
+async def test_stop_one_group_during_billed_requests():
+    from group_agent import received_groups
+
+    h = Harness(agent_kw={"delays": {"a": 20, "b": 0.05}, "usage": True})
+    h.feed(ev("a", group="A"))
+    h.feed(ev("b", user="U2", group="B"))
+    async with asyncio.timeout(3):
+        while not h.store.con.execute("SELECT 1 FROM usage_ledger WHERE group_id='A'").fetchone():
+            await asyncio.sleep(0.005)
+    pending = h.intake.intake(ev("waiting", group="A")).request
+    with h.store.con:
+        received_groups.stop_boundary(h.store.con, "BOT", "A")
+        assert h.orch.cancel_group("A") == 1
+    assert h.intake.intake(ev("silent", group="A")).status == "trigger"
+    assert h.store.lookup("BOT", "A", "silent")
+    await h.settle()
+    assert h.runs()["a"]["state"] == "cancelled"
+    assert h.runs()["b"]["state"] == "succeeded"
+    assert [row["group_id"] for row in h.outbound()] == ["B"]
+    assert (
+        h.store.con.execute("SELECT sum(cost_cny) FROM usage_ledger WHERE group_id='A'").fetchone()[
+            0
+        ]
+        == 0.01
+    )
+    h.store.con.execute("UPDATE received_groups SET enabled=1 WHERE group_id='A'")
+    assert h.orch.submit(pending) == "paused"
+    h.store.close()

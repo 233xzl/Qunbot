@@ -8,7 +8,9 @@ from uuid import uuid4
 from .contracts import Message
 
 
-SCHEMA_VERSION = 12
+from . import received_groups
+
+SCHEMA_VERSION = 13
 # Where a stored message came from: a pushed event ("live"), a get_msg lookup for a
 # referenced message that was missing locally ("backfill"; never a reply trigger), or the
 # read-only sync of the bot account's own messages from SnowLuma's message store
@@ -221,6 +223,7 @@ MIGRATIONS = {
     9: "",
     10: "",
     11: "",
+    12: "",
     SCHEMA_VERSION: "",
 }
 # v9 -> v10 (owner remote control): new tables `control_state` / `control_events` (SCHEMA);
@@ -361,6 +364,7 @@ class Store:
         try:
             self.con.executescript(
                 f"BEGIN IMMEDIATE;\n{MIGRATIONS[version]}\n{rebuild}\n{SCHEMA}\n"
+                f"{received_groups.SCHEMA}\n{received_groups.BACKFILL if version < 13 else ''}\n"
                 f"PRAGMA user_version={SCHEMA_VERSION};\nCOMMIT;"
             )
         except Exception:
@@ -368,6 +372,9 @@ class Store:
             self.con.close()
             raise
         self.con.execute("PRAGMA foreign_keys=ON")
+
+    def allows_group_reply(self, bot, group, seq=None):
+        return received_groups.allows(self.con, bot, group, seq)
 
     def close(self):
         self.con.close()
@@ -396,6 +403,8 @@ class Store:
             ),
         )
         fresh = cursor.rowcount == 1
+        if fresh and source == "live" and message.user_id != message.bot_id:
+            received_groups.observe(self.con, message.bot_id, message.group_id, received_at)
         row = self.con.execute(
             "SELECT seq FROM messages WHERE bot_id=? AND group_id=? AND message_id=?",
             (message.bot_id, message.group_id, message.message_id),

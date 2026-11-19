@@ -117,6 +117,8 @@ class LiveSender:
         if row["bot_id"] != snap.bot_id:
             return "bot_mismatch"
         control = row["kind"] == "owner_control"
+        if not control and not self._store.allows_group_reply(row["bot_id"], row["group_id"]):
+            return "group_stopped"
         if not control and self._paused is not None and self._paused():
             return "paused"
         request = self._store.lookup(row["bot_id"], row["group_id"], row["reply_to"])

@@ -99,7 +99,6 @@ FORBIDDEN = [
     "set_group_ban",
     "set_group_card",
     "set_group_leave",
-    "get_group_list",  # read-only but not needed, so not allowlisted either
     "",
     None,
     "GET_MSG",
@@ -114,6 +113,7 @@ def test_allowlist_contains_only_read_only_actions():
         "get_status",
         "get_login_info",
         "get_group_info",
+        "get_group_list",
         "get_group_member_info",
         "get_group_member_list",
     }

@@ -55,6 +55,7 @@ READ_ONLY_ACTIONS = frozenset(
         "get_status",
         "get_login_info",
         "get_group_info",
+        "get_group_list",
         "get_group_member_info",
         "get_group_member_list",
     }
@@ -788,6 +789,14 @@ class OneBotApi:
 
     async def get_login_info(self, **kw) -> dict:
         return await self._dict("get_login_info", **kw)
+
+    async def get_group_list(self) -> list[dict]:
+        rows = await self.gateway.call("get_group_list", {})
+        if not isinstance(rows, list) or not all(
+            isinstance(row, dict) and _id_or_none(row.get("group_id")) is not None for row in rows
+        ):
+            raise ActionFailed("bad_response")
+        return rows
 
     async def get_group_info(self, group_id: str, no_cache: bool = False, **kw) -> dict:
         params = {"group_id": _platform_id(group_id), "no_cache": no_cache}

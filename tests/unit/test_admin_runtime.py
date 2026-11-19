@@ -314,6 +314,16 @@ def test_admin_group_scope_budget_and_usage(tmp_path):
     app = create_app(tmp_path, demo=True, allowed_hosts={"testserver"})
     with TestClient(app, headers={"X-Qunbot-Request": "1"}) as client:
         client.post("/api/login", json={"key": key}).raise_for_status()
+        client.post("/api/runtime/start", json={}).raise_for_status()
+
+        def observe_group():
+            from group_agent.contracts import Message
+
+            app.state.controller.session.orchestrator.store.ingest(
+                Message(app.state.controller.settings.bot_id, "A", "seen", "member", ())
+            )
+
+        client.portal.call(observe_group)
         cfg = client.get("/api/config").json()
         cfg["data"]["budgets"]["daily_cost_cny"] = 18
         cfg["data"]["group_profiles"] = {"A": {"enabled": True, "daily_cost_cny": 5}}
@@ -370,3 +380,48 @@ def test_admin_group_scope_budget_and_usage(tmp_path):
         client.post("/api/runtime/stop", json={}).raise_for_status()
         assert client.post("/api/runtime/start", json={}).json()["state"] == "running"
         assert request("A")["state"] == request("B")["state"] == "rejected"
+
+
+def test_received_groups_api_stale_actions_and_restart(tmp_path):
+    from group_agent import received_groups
+    from group_agent.contracts import Message
+
+    key, _, _ = fixture_instance(tmp_path)
+    app = create_app(tmp_path, demo=True, allowed_hosts={"testserver"})
+    with TestClient(app, headers={"X-Qunbot-Request": "1"}) as client:
+        client.post("/api/login", json={"key": key}).raise_for_status()
+
+        def switch(enabled):
+            return client.post("/api/received-groups/A/reply", json={"enabled": enabled})
+
+        assert switch(True).status_code == 400
+        client.post("/api/runtime/start", json={}).raise_for_status()
+
+        def receive():
+            store = app.state.controller.session.orchestrator.store
+            store.ingest(Message(app.state.controller.settings.bot_id, "A", "ordinary", "U", ()))
+
+        client.portal.call(receive)
+        assert [r["group_id"] for r in client.get("/api/received-groups").json()] == ["A"]
+        switch(False).raise_for_status()
+        client.post("/api/runtime/pause", json={}).raise_for_status()
+        assert switch(True).status_code == 400
+        client.post("/api/runtime/resume", json={}).raise_for_status()
+        client.post("/api/runtime/stop", json={}).raise_for_status()
+        client.post("/api/runtime/start", json={}).raise_for_status()
+        assert not client.get("/api/received-groups").json()[0]["enabled"]
+        switch(True).raise_for_status()
+
+        def leave():
+            con = app.state.controller.session.orchestrator.store.con
+            with con:
+                received_groups.stop_boundary(
+                    con, app.state.controller.settings.bot_id, "A", left=True
+                )
+
+        client.portal.call(leave)
+        assert not client.get("/api/received-groups").json()
+        assert switch(True).status_code == 400
+        cfg = client.get("/api/config").json()
+        cfg["data"]["group_profiles"] = {"A": {"enabled": True}}
+        assert client.post("/api/config/draft", json={"data": cfg["data"]}).status_code == 400

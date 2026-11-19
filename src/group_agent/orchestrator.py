@@ -338,7 +338,9 @@ class Orchestrator(RunFlow):
     def submit(self, request: ReplyRequest) -> str:
         """Start a run for one admitted request. Returns started / rejected / duplicate."""
         m = request.message
-        if self.paused is not None and self.paused():
+        if not self.store.allows_group_reply(m.bot_id, m.group_id, request.seq) or (
+            self.paused is not None and self.paused()
+        ):
             # Remote pause: no run, no model call, no outbound; the request stays recorded.
             self.counts["paused_skipped"] += 1
             self.store.set_request_state(*request.key, "recorded")
@@ -405,6 +407,8 @@ class Orchestrator(RunFlow):
         Returns `(run_id, text)`; `(None, None)` when the command already has a run, text
         None when the run ended without an answer."""
         m = question
+        if not self.store.allows_group_reply(m.bot_id, m.group_id, run_seq):
+            return None, None
         mode = self.usage.cost_mode(True)
         run_id = uuid4().hex
         if not self.store.create_run(
@@ -448,6 +452,13 @@ class Orchestrator(RunFlow):
             if m.group_id == group_id and m.message_id == message_id:
                 cancelled += self.cancel_run(run_id, "request_recalled")
         return cancelled
+
+    def cancel_group(self, group_id: str) -> int:
+        return sum(
+            self.cancel_run(run_id, "group_stopped")
+            for run_id, (_, message) in list(self.active.items())
+            if message.group_id == group_id
+        )
 
     def cancel_replies(self, reason: str) -> int:
         """Cancel every active reply run (remote pause); a frame already being written
@@ -832,6 +843,8 @@ class Orchestrator(RunFlow):
         if self.paused is not None and self.paused() and trace.run_id not in self._captures:
             return "paused"
         s = self.settings
+        if not self.store.allows_group_reply(s.bot_id, trace.group_id):
+            return "group_stopped"
         row = self.store.lookup(s.bot_id, trace.group_id, trace.message_id)
         if row is None or row["revoked"]:
             return "request_recalled"
