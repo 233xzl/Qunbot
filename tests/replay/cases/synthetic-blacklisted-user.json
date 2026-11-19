@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.1",
+  "case_id": "synthetic_blacklisted_user",
+  "source": "synthetic",
+  "categories": ["黑名单", "准入"],
+  "acceptance_ids": ["AC-01"],
+  "environment": {"bot_id": "u_bot", "owner_id": "u_owner", "blacklist": ["u_blocked"], "config_overrides": {}},
+  "anchor": {"message_id": "m_b2", "group_id": "g_1", "trigger": "top_level_at"},
+  "events": [
+    {"time": 10200, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_b1", "user_id": "u_blocked", "sender": {"user_id": "u_blocked", "nickname": "n_blocked"}, "message": [{"type": "text", "data": {"text": "你们看我昨天发的那个链接没？"}}]},
+    {"time": 10210, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_1", "user_id": "u_1", "sender": {"user_id": "u_1", "nickname": "n_1"}, "message": [{"type": "text", "data": {"text": "没看到。"}}]},
+    {"time": 10220, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_b2", "user_id": "u_blocked", "sender": {"user_id": "u_blocked", "nickname": "n_blocked"}, "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "帮我总结一下刚才大家聊了什么。"}}]}
+  ],
+  "mocks": {"model": [], "tools": [], "faults": []},
+  "annotations": {"status": "draft", "confidence": "high", "should_reply": false, "required_context_ids": [], "forbidden_context_ids": ["m_b1"], "expected_relations": [], "expected_route": null, "should_clarify": false, "expected_knowledge_ids": [], "answer_points": [], "notes": ["黑名单用户的真实顶层 at 也不创建回复 run。", "被拉黑用户的历史消息默认不参与后续任何请求的上下文（需求 4.2 节），因此 m_b1 列为禁止。", "完全手写的虚构场景，账号、群、正文、卡片与网址均为虚构。"]},
+  "legacy_result": {"status": "not_applicable", "responses": [], "latency_ms": null, "search_count": null, "read_count": null, "image_extraction": null, "diagnostics_status": "not_applicable"},
+  "provenance": {"extractor": "handwritten-v1", "source_kind": "handwritten_synthetic", "source_snapshot_id": null, "extracted_at": null, "read_mode": "not_applicable", "pseudonymization": "not_applicable", "key_id": null, "storage_policy": "synthetic_versionable", "order_basis": "handwritten_order", "window": null, "event_sources": [{"message_id": "m_b1", "source_row_id": "synthetic_blacklisted_user_1", "phase": "context"}, {"message_id": "m_1", "source_row_id": "synthetic_blacklisted_user_2", "phase": "context"}, {"message_id": "m_b2", "source_row_id": "synthetic_blacklisted_user_3", "phase": "anchor"}], "reply_relations": [], "uncertainties": []}
+}

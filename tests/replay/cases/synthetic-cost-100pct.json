@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.1",
+  "case_id": "synthetic_cost_100pct",
+  "source": "synthetic",
+  "categories": ["每日费用上限", "只响应主人"],
+  "acceptance_ids": ["AC-21"],
+  "environment": {"bot_id": "u_bot", "owner_id": "u_owner", "blacklist": [], "config_overrides": {}},
+  "anchor": {"message_id": "m_u", "group_id": "g_1", "trigger": "top_level_at"},
+  "events": [
+    {"time": 39000, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_u", "user_id": "u_2", "sender": {"user_id": "u_2", "nickname": "n_2"}, "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "讲个笑话。"}}]},
+    {"time": 39010, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_o", "user_id": "u_owner", "sender": {"user_id": "u_owner", "nickname": "n_owner"}, "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "今天的费用用了多少？"}}]}
+  ],
+  "mocks": {"model": [], "tools": [], "faults": [{"name": "usage_ledger", "response": {"daily_cost_cny": 3.0, "daily_cap_cny": 3.0, "ratio": 1.0}, "delay_ms": 0, "error": null}]},
+  "annotations": {"status": "draft", "confidence": "high", "should_reply": false, "required_context_ids": [], "forbidden_context_ids": ["m_o"], "expected_relations": [], "expected_route": null, "should_clarify": false, "expected_knowledge_ids": [], "answer_points": ["当日费用已达上限，非主人请求不创建回答，诊断记录原因"], "notes": ["其后的 m_o 来自主人，应正常响应（例如告知今日费用已达上限）；该请求另行评估。", "是否给非主人一次简短的额度用尽提示由策略决定；本标注按需求 RUN-10 “只响应主人”标为不回复。", "完全手写的虚构场景，账号、群、正文、卡片与网址均为虚构。", "主人已确认此策略（决策 D-12，2026-11-07）。"]},
+  "legacy_result": {"status": "not_applicable", "responses": [], "latency_ms": null, "search_count": null, "read_count": null, "image_extraction": null, "diagnostics_status": "not_applicable"},
+  "provenance": {"extractor": "handwritten-v1", "source_kind": "handwritten_synthetic", "source_snapshot_id": null, "extracted_at": null, "read_mode": "not_applicable", "pseudonymization": "not_applicable", "key_id": null, "storage_policy": "synthetic_versionable", "order_basis": "handwritten_order", "window": null, "event_sources": [{"message_id": "m_u", "source_row_id": "synthetic_cost_100pct_1", "phase": "anchor"}, {"message_id": "m_o", "source_row_id": "synthetic_cost_100pct_2", "phase": "followup"}], "reply_relations": [], "uncertainties": []}
+}

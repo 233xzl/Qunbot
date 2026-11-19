@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.1",
+  "case_id": "synthetic_knowledge_corrected_midrun",
+  "source": "synthetic",
+  "categories": ["生成期间知识更正", "无关新消息", "本地梗解释"],
+  "acceptance_ids": ["AC-14"],
+  "environment": {"bot_id": "u_bot", "owner_id": "u_owner", "blacklist": [], "config_overrides": {}},
+  "anchor": {"message_id": "m_q", "group_id": "g_1", "trigger": "top_level_at"},
+  "events": [
+    {"time": 32000, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_q", "user_id": "u_1", "sender": {"user_id": "u_1", "nickname": "n_1"}, "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "「量子奶茶」是什么梗？"}}]},
+    {"time": 32002, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_other", "user_id": "u_2", "sender": {"user_id": "u_2", "nickname": "n_2"}, "message": [{"type": "text", "data": {"text": "晚上吃什么？"}}]},
+    {"time": 32003, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_fix", "user_id": "u_owner", "sender": {"user_id": "u_owner", "nickname": "n_owner"}, "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "更正 「量子奶茶」：指点了奶茶却一直没去取。"}}]}
+  ],
+  "mocks": {"model": [{"name": "answer", "response": "「量子奶茶」指一会儿说要喝、一会儿又不喝的纠结状态。", "delay_ms": 3000, "error": null}, {"name": "answer", "response": "「量子奶茶」指点了奶茶却一直没去取。", "delay_ms": 1000, "error": null}], "tools": [{"name": "knowledge_search", "response": {"hits": [{"id": "kb_syn_quantum_tea", "term": "量子奶茶", "scope": "public", "revision": 1, "active": true, "content": "指一会儿说要喝、一会儿又不喝的纠结状态。"}]}, "delay_ms": 0, "error": null}], "faults": [{"name": "knowledge_update", "response": {"id": "kb_syn_quantum_tea", "revision": 2, "by_message": "m_fix", "content": "指点了奶茶却一直没去取。"}, "delay_ms": 1500, "error": null}]},
+  "annotations": {"status": "draft", "confidence": "high", "should_reply": true, "required_context_ids": [], "forbidden_context_ids": ["m_other", "m_fix"], "expected_relations": [], "expected_route": "local_knowledge", "should_clarify": false, "expected_knowledge_ids": ["kb_syn_quantum_tea"], "answer_points": ["上下文快照在 m_q 冻结，生成中到达的 m_other 不进入本次输入", "发布前版本检查发现所用 kb_syn_quantum_tea 修订 1 已被修订 2 替代，不发送基于修订 1 的答案", "按修订 2 重新生成（指点了奶茶却一直没去取），或结束该结果并记录原因"], "notes": ["m_fix 作为聊天材料不进入 m_q 的上下文；它对知识库的影响通过版本检查体现。m_fix 本身的教学处理另行评估。", "第二个 answer 模拟是发布前检查拦下旧答案后、按修订 2 重新生成的回答；knowledge_update 在 1.5 秒时代表 m_fix 的提交，m_fix 的 run 随后按内容相同判为重复，不再增加修订号。", "完全手写的虚构场景，账号、群、正文、卡片与网址均为虚构。"]},
+  "legacy_result": {"status": "not_applicable", "responses": [], "latency_ms": null, "search_count": null, "read_count": null, "image_extraction": null, "diagnostics_status": "not_applicable"},
+  "provenance": {"extractor": "handwritten-v1", "source_kind": "handwritten_synthetic", "source_snapshot_id": null, "extracted_at": null, "read_mode": "not_applicable", "pseudonymization": "not_applicable", "key_id": null, "storage_policy": "synthetic_versionable", "order_basis": "handwritten_order", "window": null, "event_sources": [{"message_id": "m_q", "source_row_id": "synthetic_knowledge_corrected_midrun_1", "phase": "anchor"}, {"message_id": "m_other", "source_row_id": "synthetic_knowledge_corrected_midrun_2", "phase": "followup"}, {"message_id": "m_fix", "source_row_id": "synthetic_knowledge_corrected_midrun_3", "phase": "followup"}], "reply_relations": [], "uncertainties": []}
+}

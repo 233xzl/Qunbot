@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.1",
+  "case_id": "synthetic_recall_and_expiry",
+  "source": "synthetic",
+  "categories": ["撤回", "保留期到期", "引用追问"],
+  "acceptance_ids": ["AC-20", "AC-13"],
+  "environment": {"bot_id": "u_bot", "owner_id": "u_owner", "blacklist": [], "config_overrides": {}},
+  "anchor": {"message_id": "m_q", "group_id": "g_1", "trigger": "top_level_at"},
+  "events": [
+    {"time": 100000, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_old", "user_id": "u_1", "sender": {"user_id": "u_1", "nickname": "n_1"}, "message": [{"type": "text", "data": {"text": "虚构公司「青柠科技」宣布明年起全员四天工作制。"}}]},
+    {"time": 877600, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_rc", "user_id": "u_6", "sender": {"user_id": "u_6", "nickname": "n_6"}, "message": [{"type": "text", "data": {"text": "小道消息：青柠科技要裁员一半。"}}]},
+    {"time": 877610, "self_id": "u_bot", "post_type": "notice", "notice_type": "group_recall", "group_id": "g_1", "message_id": "m_rc", "user_id": "u_6", "operator_id": "u_6"},
+    {"time": 877620, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_chat", "user_id": "u_2", "sender": {"user_id": "u_2", "nickname": "n_2"}, "message": [{"type": "text", "data": {"text": "真的假的？"}}]},
+    {"time": 877700, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_q", "user_id": "u_3", "sender": {"user_id": "u_3", "nickname": "n_3"}, "message": [{"type": "reply", "data": {"id": "m_old"}}, {"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "这条说的还算数吗？刚才撤回的那条又是怎么回事？"}}]}
+  ],
+  "mocks": {"model": [], "tools": [], "faults": []},
+  "annotations": {"status": "draft", "confidence": "medium", "should_reply": true, "required_context_ids": [], "forbidden_context_ids": ["m_old", "m_rc"], "expected_relations": [{"source_message_id": "m_q", "target_message_id": "m_old", "kind": "reply_to", "status": "expected", "evidence": "handwritten_annotation", "uncertainty": "引用目标已超过 7 天保留期，正文不可用"}], "expected_route": "clarify", "should_clarify": true, "expected_knowledge_ids": [], "answer_points": ["被引用的 m_old 已超过 7 天保留期，不能使用其正文；说明原消息已过期，请对方重新提供", "被撤回的 m_rc 不再作为材料，只可说明那条已撤回、无法查看", "不凭记忆复述或猜测两条消息的内容"], "notes": ["m_old 留在事件中只为模拟引用目标；运行器应按保留期把它视为已清理（离线 CLI 尚不执行保留期）。", "撤回通知的元信息可用于说明“已撤回”，但不能使用被撤回内容（CTX-07）。", "完全手写的虚构场景，账号、群、正文、卡片与网址均为虚构。"]},
+  "legacy_result": {"status": "not_applicable", "responses": [], "latency_ms": null, "search_count": null, "read_count": null, "image_extraction": null, "diagnostics_status": "not_applicable"},
+  "provenance": {"extractor": "handwritten-v1", "source_kind": "handwritten_synthetic", "source_snapshot_id": null, "extracted_at": null, "read_mode": "not_applicable", "pseudonymization": "not_applicable", "key_id": null, "storage_policy": "synthetic_versionable", "order_basis": "handwritten_order", "window": null, "event_sources": [{"message_id": "m_old", "source_row_id": "synthetic_recall_and_expiry_1", "phase": "context"}, {"message_id": "m_rc", "source_row_id": "synthetic_recall_and_expiry_2", "phase": "context"}, {"message_id": "m_rc", "source_row_id": "synthetic_recall_and_expiry_3", "phase": "context"}, {"message_id": "m_chat", "source_row_id": "synthetic_recall_and_expiry_4", "phase": "context"}, {"message_id": "m_q", "source_row_id": "synthetic_recall_and_expiry_5", "phase": "anchor"}], "reply_relations": [{"source_message_id": "m_q", "target_message_id": "m_old", "kind": "reply_to", "status": "resolved", "evidence": "top_level_reply_segment", "uncertainty": null}], "uncertainties": []}
+}

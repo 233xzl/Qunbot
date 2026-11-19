@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.1",
+  "case_id": "synthetic_teach_missing_scope",
+  "source": "synthetic",
+  "categories": ["主人教学", "未指定作用域"],
+  "acceptance_ids": ["AC-10"],
+  "environment": {"bot_id": "u_bot", "owner_id": "u_owner", "blacklist": [], "config_overrides": {}},
+  "anchor": {"message_id": "m_t", "group_id": "g_1", "trigger": "top_level_at"},
+  "events": [
+    {"time": 28000, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_t", "user_id": "u_owner", "sender": {"user_id": "u_owner", "nickname": "n_owner"}, "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "记住：「早八人」指每天早上八点就要上课或上班的人。"}}]}
+  ],
+  "mocks": {"model": [], "tools": [], "faults": []},
+  "annotations": {"status": "draft", "confidence": "high", "should_reply": true, "required_context_ids": [], "forbidden_context_ids": [], "expected_relations": [], "expected_route": "teaching", "should_clarify": true, "expected_knowledge_ids": [], "answer_points": ["未指定公共或本群作用域，不提交知识", "回复提示主人补充作用域（公共 / 本群）后再提交", "不自动推断作用域"], "notes": ["LEARN-01、D-09：新教学的作用域由主人在指令中显式指定。", "完全手写的虚构场景，账号、群、正文、卡片与网址均为虚构。"]},
+  "legacy_result": {"status": "not_applicable", "responses": [], "latency_ms": null, "search_count": null, "read_count": null, "image_extraction": null, "diagnostics_status": "not_applicable"},
+  "provenance": {"extractor": "handwritten-v1", "source_kind": "handwritten_synthetic", "source_snapshot_id": null, "extracted_at": null, "read_mode": "not_applicable", "pseudonymization": "not_applicable", "key_id": null, "storage_policy": "synthetic_versionable", "order_basis": "handwritten_order", "window": null, "event_sources": [{"message_id": "m_t", "source_row_id": "synthetic_teach_missing_scope_1", "phase": "anchor"}], "reply_relations": [], "uncertainties": []}
+}

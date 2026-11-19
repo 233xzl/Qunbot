@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.1",
+  "case_id": "synthetic_degrade_web_failure",
+  "source": "synthetic",
+  "categories": ["外部事实", "网页失败", "降级"],
+  "acceptance_ids": ["AC-11"],
+  "environment": {"bot_id": "u_bot", "owner_id": "u_owner", "blacklist": [], "config_overrides": {}},
+  "anchor": {"message_id": "m_q", "group_id": "g_1", "trigger": "top_level_at"},
+  "events": [
+    {"time": 30000, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_q", "user_id": "u_2", "sender": {"user_id": "u_2", "nickname": "n_2"}, "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "虚构手游《云端牧场》2.0 版本是不是今天上线？"}}]}
+  ],
+  "mocks": {"model": [], "tools": [{"name": "web_search", "response": null, "delay_ms": 800, "error": "HTTPStatusError_503"}, {"name": "web_search", "response": null, "delay_ms": 800, "error": "HTTPStatusError_503"}], "faults": []},
+  "annotations": {"status": "draft", "confidence": "high", "should_reply": true, "required_context_ids": [], "forbidden_context_ids": [], "expected_relations": [], "expected_route": "web", "should_clarify": false, "expected_knowledge_ids": [], "answer_points": ["时效问题先联网检索", "检索失败时说明暂时无法核实，不凭模型知识断言是否上线", "失败计入本 run 搜索预算，在总期限内结束"], "notes": ["完全手写的虚构场景，账号、群、正文、卡片与网址均为虚构。"]},
+  "legacy_result": {"status": "not_applicable", "responses": [], "latency_ms": null, "search_count": null, "read_count": null, "image_extraction": null, "diagnostics_status": "not_applicable"},
+  "provenance": {"extractor": "handwritten-v1", "source_kind": "handwritten_synthetic", "source_snapshot_id": null, "extracted_at": null, "read_mode": "not_applicable", "pseudonymization": "not_applicable", "key_id": null, "storage_policy": "synthetic_versionable", "order_basis": "handwritten_order", "window": null, "event_sources": [{"message_id": "m_q", "source_row_id": "synthetic_degrade_web_failure_1", "phase": "anchor"}], "reply_relations": [], "uncertainties": []}
+}

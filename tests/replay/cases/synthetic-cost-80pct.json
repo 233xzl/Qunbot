@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.1",
+  "case_id": "synthetic_cost_80pct",
+  "source": "synthetic",
+  "categories": ["每日费用 80%", "关闭联网", "降级"],
+  "acceptance_ids": ["AC-21"],
+  "environment": {"bot_id": "u_bot", "owner_id": "u_owner", "blacklist": [], "config_overrides": {}},
+  "anchor": {"message_id": "m_q", "group_id": "g_1", "trigger": "top_level_at"},
+  "events": [
+    {"time": 38000, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_q", "user_id": "u_1", "sender": {"user_id": "u_1", "nickname": "n_1"}, "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "虚构电影《雾港来信》的上映日期定了吗？"}}]}
+  ],
+  "mocks": {"model": [{"name": "route", "response": "web", "delay_ms": 0, "error": null}], "tools": [{"name": "web_search", "response": {"results": [{"title": "《雾港来信》定档公告（虚构）", "url": "https://movie.example.invalid/fog-harbor"}]}, "delay_ms": 800, "error": null}], "faults": [{"name": "usage_ledger", "response": {"daily_cost_cny": 2.45, "daily_cap_cny": 3.0, "ratio": 0.82}, "delay_ms": 0, "error": null}]},
+  "annotations": {"status": "draft", "confidence": "medium", "should_reply": true, "required_context_ids": [], "forbidden_context_ids": [], "expected_relations": [], "expected_route": "chat", "should_clarify": false, "expected_knowledge_ids": [], "answer_points": ["当日费用已超过上限的 80%：关闭联网并缩短上下文", "说明目前无法联网核实上映日期，不凭模型知识断言", "诊断记录降级原因（费用达到 80%）"], "notes": ["常态下此问应走 web（模拟模型的 route 意图为 web，并备有 web_search 模拟）；降级后不调用网页工具，web_search 模拟应保持未使用，按 chat 简短作答。", "完全手写的虚构场景，账号、群、正文、卡片与网址均为虚构。"]},
+  "legacy_result": {"status": "not_applicable", "responses": [], "latency_ms": null, "search_count": null, "read_count": null, "image_extraction": null, "diagnostics_status": "not_applicable"},
+  "provenance": {"extractor": "handwritten-v1", "source_kind": "handwritten_synthetic", "source_snapshot_id": null, "extracted_at": null, "read_mode": "not_applicable", "pseudonymization": "not_applicable", "key_id": null, "storage_policy": "synthetic_versionable", "order_basis": "handwritten_order", "window": null, "event_sources": [{"message_id": "m_q", "source_row_id": "synthetic_cost_80pct_1", "phase": "anchor"}], "reply_relations": [], "uncertainties": []}
+}

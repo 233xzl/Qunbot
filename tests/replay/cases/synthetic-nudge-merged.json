@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.1",
+  "case_id": "synthetic_nudge_merged",
+  "source": "synthetic",
+  "categories": ["催促", "同用户多问题", "并发@"],
+  "acceptance_ids": ["AC-05"],
+  "environment": {"bot_id": "u_bot", "owner_id": "u_owner", "blacklist": [], "config_overrides": {}},
+  "anchor": {"message_id": "m_nudge", "group_id": "g_1", "trigger": "top_level_at"},
+  "events": [
+    {"time": 60000, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_q1", "user_id": "u_1", "sender": {"user_id": "u_1", "nickname": "n_1"}, "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "虚构游戏《星环旅人》里的17326是什么意思"}}]},
+    {"time": 60032, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_nudge", "user_id": "u_1", "sender": {"user_id": "u_1", "nickname": "n_1"}, "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": " 回答我"}}]}
+  ],
+  "mocks": {"model": [{"name": "answer:m_q1", "response": "17326 是虚构游戏里的活动编号（虚构）。", "delay_ms": 60000, "error": null}], "tools": [], "faults": []},
+  "annotations": {"status": "draft", "confidence": "high", "should_reply": false, "required_context_ids": ["m_q1"], "forbidden_context_ids": [], "expected_relations": [], "expected_route": "nudge_merged", "should_clarify": false, "expected_knowledge_ids": [], "answer_points": ["m_nudge 只是催促 m_q1：m_q1 的 run 仍在进行中，催促的 run 以 nudge_merged 结束，不调用模型，不发出第二条回答"], "notes": ["同一提问人 @ 机器人提问，32 秒后又发“回答我”，此时 m_q1 的回答还没有发出（模型 60 秒）。", "催促消息的 run 不生成、不发送；回答由 m_q1 自己的 run 发出。", "完全手写的虚构场景，账号、群、正文均为虚构。"]},
+  "legacy_result": {"status": "not_applicable", "responses": [], "latency_ms": null, "search_count": null, "read_count": null, "image_extraction": null, "diagnostics_status": "not_applicable"},
+  "provenance": {"extractor": "handwritten-v1", "source_kind": "handwritten_synthetic", "source_snapshot_id": null, "extracted_at": null, "read_mode": "not_applicable", "pseudonymization": "not_applicable", "key_id": null, "storage_policy": "synthetic_versionable", "order_basis": "handwritten_order", "window": null, "event_sources": [{"message_id": "m_q1", "source_row_id": "synthetic_nudge_merged_1", "phase": "context"}, {"message_id": "m_nudge", "source_row_id": "synthetic_nudge_merged_2", "phase": "anchor"}], "reply_relations": [], "uncertainties": []}
+}

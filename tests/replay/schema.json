@@ -1,0 +1,347 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:group-agent:replay:1.0",
+  "title": "Group-agent pseudonymized or synthetic OneBot replay case",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "case_id", "source", "categories", "acceptance_ids", "environment", "anchor", "events", "mocks", "annotations", "legacy_result", "provenance"],
+  "properties": {
+    "schema_version": {"enum": ["1.0", "1.1"]},
+    "case_id": {"type": "string", "pattern": "^[a-zA-Z0-9_-]+$"},
+    "source": {"enum": ["real", "synthetic"]},
+    "categories": {"$ref": "#/$defs/stringList"},
+    "acceptance_ids": {"$ref": "#/$defs/stringList"},
+    "environment": {
+      "type": "object", "additionalProperties": false,
+      "required": ["bot_id", "owner_id", "blacklist", "config_overrides"],
+      "properties": {
+        "bot_id": {"$ref": "#/$defs/account"},
+        "owner_id": {"anyOf": [{"$ref": "#/$defs/account"}, {"type": "null"}]},
+        "blacklist": {"type": "array", "items": {"$ref": "#/$defs/account"}, "uniqueItems": true},
+        "config_overrides": {"type": "object"}
+      }
+    },
+    "anchor": {
+      "type": "object", "additionalProperties": false,
+      "required": ["message_id", "group_id", "trigger"],
+      "properties": {
+        "message_id": {"$ref": "#/$defs/messageId"},
+        "group_id": {"anyOf": [{"$ref": "#/$defs/group"}, {"type": "null"}]},
+        "trigger": {"enum": ["top_level_at", "none", "notice", "synthetic"]}
+      }
+    },
+    "events": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/event"}},
+    "mocks": {
+      "type": "object", "additionalProperties": false, "required": ["model", "tools", "faults"],
+      "properties": {
+        "model": {"type": "array", "items": {"$ref": "#/$defs/mock"}},
+        "tools": {"type": "array", "items": {"$ref": "#/$defs/mock"}},
+        "faults": {"type": "array", "items": {"$ref": "#/$defs/mock"}}
+      }
+    },
+    "annotations": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "confidence", "should_reply", "required_context_ids", "forbidden_context_ids", "expected_relations", "expected_route", "should_clarify", "expected_knowledge_ids", "answer_points", "notes"],
+      "properties": {
+        "status": {"enum": ["needs_review", "draft", "reviewed"]},
+        "confidence": {"enum": [null, "low", "medium", "high"]},
+        "should_reply": {"type": ["boolean", "null"]},
+        "required_context_ids": {"type": "array", "items": {"$ref": "#/$defs/messageId"}, "uniqueItems": true},
+        "forbidden_context_ids": {"type": "array", "items": {"$ref": "#/$defs/messageId"}, "uniqueItems": true},
+        "expected_relations": {"type": "array", "items": {"$ref": "#/$defs/relation"}},
+        "expected_route": {"type": ["string", "null"]},
+        "should_clarify": {"type": ["boolean", "null"]},
+        "expected_knowledge_ids": {"$ref": "#/$defs/stringList"},
+        "answer_points": {"$ref": "#/$defs/stringList"},
+        "notes": {"$ref": "#/$defs/stringList"}
+      }
+    },
+    "legacy_result": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "responses", "latency_ms", "search_count", "read_count", "image_extraction", "diagnostics_status"],
+      "properties": {
+        "status": {"enum": ["linked", "uncertain", "unobserved", "not_applicable"]},
+        "responses": {
+          "type": "array", "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["message_id", "association", "evidence", "observed_delay_seconds"],
+            "properties": {
+              "message_id": {"$ref": "#/$defs/messageId"},
+              "association": {"enum": ["explicit_reply", "explicit_reply_chain", "uncertain"]},
+              "evidence": {"enum": ["top_level_reply_segment", "same_group_time_window_only"]},
+              "observed_delay_seconds": {"type": ["number", "null"], "minimum": 0}
+            },
+            "allOf": [
+              {"if": {"properties": {"association": {"const": "uncertain"}}}, "then": {"properties": {"evidence": {"const": "same_group_time_window_only"}, "observed_delay_seconds": {"type": "null"}}}},
+              {"if": {"properties": {"association": {"enum": ["explicit_reply", "explicit_reply_chain"]}}}, "then": {"properties": {"evidence": {"const": "top_level_reply_segment"}, "observed_delay_seconds": {"type": "number", "minimum": 0}}}}
+            ]
+          }
+        },
+        "latency_ms": {"type": ["number", "null"], "minimum": 0},
+        "search_count": {"type": ["integer", "null"], "minimum": 0},
+        "read_count": {"type": ["integer", "null"], "minimum": 0},
+        "image_extraction": {"type": ["object", "null"]},
+        "diagnostics_status": {"enum": ["not_joined", "joined", "unmatched", "not_applicable"]},
+        "bot_reply": {
+          "anyOf": [{"type": "null"}, {
+            "type": "object", "additionalProperties": false,
+            "required": ["message_id", "rule", "confidence", "delay_seconds", "window_seconds", "intervening_anchor_count"],
+            "properties": {
+              "message_id": {"$ref": "#/$defs/messageId"},
+              "rule": {"enum": ["reply_segment_to_anchor", "first_unquoted_bot_message_after_anchor"]},
+              "confidence": {"$ref": "#/$defs/confidence"},
+              "delay_seconds": {"type": "number", "minimum": 0},
+              "window_seconds": {"type": "integer", "minimum": 1},
+              "intervening_anchor_count": {"type": "integer", "minimum": 0}
+            }
+          }]
+        },
+        "diagnostics": {
+          "anyOf": [{"type": "null"}, {
+            "type": "object", "additionalProperties": false,
+            "required": ["request_ref", "rule", "confidence", "candidate_count", "competing_anchor_count", "clock_offset_seconds", "phase_counts", "latency_ms", "search_count", "fetch_count", "vision_status", "failure_flags", "failure_reasons"],
+            "properties": {
+              "request_ref": {"type": "string", "pattern": "^opaque_[A-Za-z0-9_-]+$"},
+              "rule": {"enum": ["finish_near_bot_reply_offset_corrected", "unfinished_request_before_reply", "start_near_anchor_no_reply"]},
+              "confidence": {"$ref": "#/$defs/confidence"},
+              "candidate_count": {"type": "integer", "minimum": 1},
+              "competing_anchor_count": {"type": "integer", "minimum": 0},
+              "clock_offset_seconds": {"type": "number"},
+              "clock_offset_spread_seconds": {"type": ["number", "null"], "minimum": 0},
+              "phase_counts": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+              "retrieved_knowledge_ids": {"type": "array", "maxItems": 20, "items": {"type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,64}$"}},
+              "local_only": {"type": "boolean"},
+              "url_fetch_calls": {"type": "integer", "minimum": 0},
+              "latency_ms": {"type": ["number", "null"], "minimum": 0},
+              "search_count": {"type": ["integer", "null"], "minimum": 0},
+              "fetch_count": {"type": ["integer", "null"], "minimum": 0},
+              "web_calls": {"type": "integer", "minimum": 0},
+              "web_blocked": {"type": "boolean"},
+              "vision_status": {"enum": ["succeeded", "failed", "not_attempted"]},
+              "vision_fallback": {"type": "boolean"},
+              "local_retrieval_images": {"type": ["integer", "null"], "minimum": 0},
+              "group_context_selected": {"type": ["integer", "null"], "minimum": 0},
+              "account_lookup": {"type": "boolean"},
+              "teaching": {"type": "boolean"},
+              "failure_flags": {"type": "array", "items": {"enum": ["vision_failed", "web_blocked", "web_failed", "teaching_failed", "slow_over_60s", "no_finished_row"]}},
+              "failure_reasons": {"type": "array", "items": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$"}},
+              "diag_input_tokens": {"type": ["integer", "null"], "minimum": 0},
+              "diag_output_tokens": {"type": ["integer", "null"], "minimum": 0}
+            }
+          }]
+        },
+        "provider_calls": {
+          "anyOf": [{"type": "null"}, {
+            "type": "object", "additionalProperties": false,
+            "required": ["call_count", "other_group_overlap_count", "statuses", "models", "token_input_other", "token_input_cached", "token_output", "model_seconds", "window"],
+            "properties": {
+              "call_count": {"type": "integer", "minimum": 0},
+              "other_group_overlap_count": {"type": "integer", "minimum": 0},
+              "statuses": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+              "models": {"$ref": "#/$defs/stringList"},
+              "token_input_other": {"type": "integer", "minimum": 0},
+              "token_input_cached": {"type": "integer", "minimum": 0},
+              "token_output": {"type": "integer", "minimum": 0},
+              "model_seconds": {"type": "number", "minimum": 0},
+              "window": {"enum": ["diagnostics_request_span", "anchor_to_reply_offset_corrected"]}
+            }
+          }]
+        },
+        "link": {
+          "type": "object", "additionalProperties": false,
+          "required": ["status", "confidence", "sources", "missing_reasons"],
+          "properties": {
+            "status": {"enum": ["linked", "partial", "unlinked"]},
+            "confidence": {"anyOf": [{"$ref": "#/$defs/confidence"}, {"type": "null"}]},
+            "sources": {"type": "array", "items": {"enum": ["bot_reply", "diagnostics", "provider_stats"]}, "uniqueItems": true},
+            "missing_reasons": {"type": "array", "items": {"enum": ["no_bot_message_in_reply_window", "no_matching_diagnostics_request", "anchor_outside_diagnostics_coverage", "no_in_group_provider_call_in_window"]}}
+          }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["extractor", "source_kind", "source_snapshot_id", "extracted_at", "read_mode", "pseudonymization", "key_id", "storage_policy", "order_basis", "window", "event_sources", "reply_relations", "uncertainties"],
+      "properties": {
+        "extractor": {"type": "string"},
+        "source_kind": {"enum": ["snowluma_messages_db", "handwritten_synthetic"]},
+        "source_snapshot_id": {"type": ["string", "null"]},
+        "extracted_at": {"type": ["string", "null"], "format": "date-time"},
+        "read_mode": {"enum": ["sqlite_uri_mode_ro_query_only", "not_applicable"]},
+        "pseudonymization": {"enum": ["hmac_sha256_domain_separated_96bit", "not_applicable"]},
+        "key_id": {"type": ["string", "null"]},
+        "storage_policy": {"enum": ["local_raw_only", "synthetic_versionable"]},
+        "order_basis": {"enum": ["db_timestamp_sequence_row_id", "handwritten_order"]},
+        "window": {
+          "anyOf": [
+            {"type": "null"},
+            {"type": "object", "additionalProperties": false,
+              "required": ["before_minutes", "minimum_previous_messages", "base_context_count", "followup_minutes", "followup_event_count", "reference_ancestor_count", "limited_by_available_history", "observed_until", "followup_complete"],
+              "properties": {
+                "before_minutes": {"type": "integer", "minimum": 1},
+                "minimum_previous_messages": {"type": "integer", "minimum": 1},
+                "base_context_count": {"type": "integer", "minimum": 0},
+                "followup_minutes": {"type": "integer", "minimum": 1},
+                "followup_event_count": {"type": "integer", "minimum": 0},
+                "reference_ancestor_count": {"type": "integer", "minimum": 0},
+                "limited_by_available_history": {"type": "boolean"},
+                "observed_until": {"type": "integer"},
+                "followup_complete": {"type": "boolean"}
+              }
+            }
+          ]
+        },
+        "event_sources": {
+          "type": "array", "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["message_id", "source_row_id", "phase"],
+            "properties": {
+              "message_id": {"$ref": "#/$defs/messageId"},
+              "source_row_id": {"type": "string"},
+              "phase": {"enum": ["context", "anchor", "followup", "reference_ancestor"]}
+            }
+          }
+        },
+        "reply_relations": {"type": "array", "items": {"$ref": "#/$defs/relation"}},
+        "uncertainties": {"$ref": "#/$defs/stringList"}
+      }
+    }
+  },
+  "allOf": [
+    {"if": {"properties": {"source": {"const": "real"}}}, "then": {
+      "properties": {
+        "provenance": {"properties": {"storage_policy": {"const": "local_raw_only"}, "source_kind": {"const": "snowluma_messages_db"}, "read_mode": {"const": "sqlite_uri_mode_ro_query_only"}, "pseudonymization": {"const": "hmac_sha256_domain_separated_96bit"}}},
+        "events": {"items": {"properties": {"message": {"items": {"$ref": "#/$defs/segmentWithoutCard"}}}}}
+      }
+    }},
+    {"if": {"properties": {"source": {"const": "synthetic"}}}, "then": {
+      "properties": {"provenance": {"properties": {"storage_policy": {"const": "synthetic_versionable"}, "source_kind": {"const": "handwritten_synthetic"}}}}
+    }}
+  ],
+  "$defs": {
+    "account": {"type": "string", "pattern": "^u_[A-Za-z0-9_-]+$"},
+    "group": {"type": "string", "pattern": "^g_[A-Za-z0-9_-]+$"},
+    "messageId": {"type": "string", "pattern": "^m_[A-Za-z0-9_-]+$"},
+    "stringList": {"type": "array", "items": {"type": "string"}},
+    "confidence": {"enum": ["low", "medium", "high"]},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "mediaReason": {"enum": ["not_acquired_no_network", "synthetic_fixture", "fetched_via_onebot_get_image", "get_image_failed", "no_download_url", "oversize", "download_http_error", "download_failed", "empty_content", "not_image", "missing_file_key", "fetch_disabled", "non_image_media_not_fetched"]},
+    "mediaRef": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "reason", "sha256", "mime", "bytes", "width", "height", "path"],
+      "properties": {
+        "status": {"enum": ["available", "unavailable"]},
+        "reason": {"$ref": "#/$defs/mediaReason"},
+        "sha256": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/sha256"}]},
+        "mime": {"enum": [null, "image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp"]},
+        "bytes": {"type": ["integer", "null"], "minimum": 1, "maximum": 10485760},
+        "width": {"type": ["integer", "null"], "minimum": 0},
+        "height": {"type": ["integer", "null"], "minimum": 0},
+        "path": {"anyOf": [{"type": "null"}, {"type": "string", "pattern": "^media/[0-9a-f]{64}\\.(jpg|png|gif|webp|bmp)$"}]}
+      },
+      "allOf": [
+        {"if": {"properties": {"status": {"const": "available"}}}, "then": {"properties": {"sha256": {"$ref": "#/$defs/sha256"}, "mime": {"type": "string"}, "bytes": {"type": "integer"}, "path": {"type": "string"}}}},
+        {"if": {"properties": {"status": {"const": "unavailable"}}}, "then": {"properties": {"sha256": {"type": "null"}, "path": {"type": "null"}, "bytes": {"type": "null"}}}}
+      ]
+    },
+    "relation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source_message_id", "target_message_id", "kind", "status", "evidence", "uncertainty"],
+      "properties": {
+        "source_message_id": {"$ref": "#/$defs/messageId"},
+        "target_message_id": {"$ref": "#/$defs/messageId"},
+        "kind": {"enum": ["reply_to", "answers", "refers_to", "corrects", "continues"]},
+        "status": {"enum": ["resolved", "unresolved", "expected"]},
+        "evidence": {"type": "string"},
+        "uncertainty": {"type": ["string", "null"]}
+      }
+    },
+    "mock": {
+      "type": "object", "additionalProperties": false, "required": ["name", "response", "delay_ms", "error"],
+      "properties": {
+        "name": {"type": "string"}, "response": {}, "delay_ms": {"type": "integer", "minimum": 0},
+        "error": {"type": ["string", "null"]}
+      }
+    },
+    "segment": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["type", "data"], "properties": {
+          "type": {"const": "text"}, "data": {"type": "object", "additionalProperties": false, "required": ["text"], "properties": {"text": {"type": "string"}}}
+        }},
+        {"type": "object", "additionalProperties": false, "required": ["type", "data"], "properties": {
+          "type": {"const": "at"}, "data": {"type": "object", "additionalProperties": false, "required": ["qq"], "properties": {"qq": {"anyOf": [{"$ref": "#/$defs/account"}, {"const": "all"}]}}}
+        }},
+        {"type": "object", "additionalProperties": false, "required": ["type", "data"], "properties": {
+          "type": {"const": "reply"}, "data": {"type": "object", "additionalProperties": false, "required": ["id"], "properties": {"id": {"$ref": "#/$defs/messageId"}, "message": {"type": "array", "items": {"$ref": "#/$defs/segment"}}}}
+        }},
+        {"type": "object", "additionalProperties": false, "required": ["type", "data"], "properties": {
+          "type": {"enum": ["image", "video", "record", "file"]}, "data": {
+            "type": "object", "additionalProperties": false,
+            "required": ["media_id", "availability", "reason", "content_sha256", "local_metadata"],
+            "properties": {
+              "media_id": {"type": "string", "pattern": "^media_[A-Za-z0-9_-]+$"},
+              "availability": {"enum": ["available", "unavailable", "synthetic"]},
+              "reason": {"$ref": "#/$defs/mediaReason"},
+              "content_sha256": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/sha256"}]},
+              "local_metadata": {"type": "object", "additionalProperties": false, "properties": {
+                "width": {"type": "number", "minimum": 0}, "height": {"type": "number", "minimum": 0},
+                "size": {"type": "number", "minimum": 0}, "file_size": {"type": "number", "minimum": 0},
+                "sub_type": {"type": "number", "minimum": 0}
+              }},
+              "media_ref": {"$ref": "#/$defs/mediaRef"}
+            },
+            "allOf": [
+              {"if": {"properties": {"availability": {"const": "available"}}}, "then": {
+                "required": ["media_ref"],
+                "properties": {"content_sha256": {"$ref": "#/$defs/sha256"}, "media_ref": {"properties": {"status": {"const": "available"}}}}
+              }},
+              {"if": {"properties": {"availability": {"const": "unavailable"}}}, "then": {
+                "properties": {"content_sha256": {"type": "null"}}
+              }}
+            ]
+          }
+        }},
+        {"type": "object", "additionalProperties": false, "required": ["type", "data"], "properties": {
+          "type": {"const": "face"}, "data": {"type": "object", "additionalProperties": false, "required": ["id"], "properties": {"id": {"type": "string", "pattern": "^[0-9]+$"}}}
+        }},
+        {"type": "object", "additionalProperties": false, "required": ["type", "data"], "properties": {
+          "type": {"const": "redacted"}, "data": {"type": "object", "additionalProperties": false, "required": ["reason"], "properties": {"original_type": {"enum": ["json", "xml", "forward", "node", "markdown", "unknown"]}, "reason": {"enum": ["opaque_payload_removed", "invalid_segment", "missing_at_target", "missing_reply_target"]}}}
+        }},
+        {"type": "object", "additionalProperties": false, "required": ["type", "data"], "properties": {
+          "type": {"const": "json"}, "data": {"type": "object", "additionalProperties": false, "required": ["data"], "properties": {"data": {"type": "string", "minLength": 2, "maxLength": 20000}}}
+        }}
+      ]
+    },
+    "segmentWithoutCard": {
+      "not": {"required": ["type"], "properties": {"type": {"const": "json"}}},
+      "properties": {"data": {"properties": {"message": {"items": {"$ref": "#/$defs/segmentWithoutCard"}}}}}
+    },
+    "event": {
+      "type": "object", "additionalProperties": false,
+      "required": ["time", "self_id", "post_type", "user_id", "message_id"],
+      "properties": {
+        "time": {"type": "integer"}, "self_id": {"$ref": "#/$defs/account"},
+        "post_type": {"enum": ["message", "message_sent", "notice"]},
+        "message_type": {"enum": ["group", "private"]},
+        "sub_type": {"enum": ["normal", "anonymous", "friend", "group", "other"]},
+        "group_id": {"$ref": "#/$defs/group"}, "group_name": {"type": "string", "pattern": "^gn_[A-Za-z0-9_-]+$"},
+        "message_id": {"$ref": "#/$defs/messageId"}, "user_id": {"$ref": "#/$defs/account"},
+        "operator_id": {"$ref": "#/$defs/account"}, "notice_type": {"enum": ["group_recall", "friend_recall"]},
+        "message": {"type": "array", "items": {"$ref": "#/$defs/segment"}},
+        "sender": {
+          "type": "object", "additionalProperties": false, "required": ["user_id"],
+          "properties": {
+            "user_id": {"$ref": "#/$defs/account"}, "nickname": {"type": "string", "pattern": "^n_[A-Za-z0-9_-]+$"},
+            "card": {"type": "string", "pattern": "^n_[A-Za-z0-9_-]+$"}, "role": {"enum": ["owner", "admin", "member"]}
+          }
+        }
+      },
+      "allOf": [
+        {"if": {"properties": {"post_type": {"enum": ["message", "message_sent"]}}}, "then": {"required": ["message_type", "sub_type", "message", "sender"]}},
+        {"if": {"required": ["message_type"], "properties": {"message_type": {"const": "group"}}}, "then": {"required": ["group_id"]}},
+        {"if": {"properties": {"post_type": {"const": "notice"}}}, "then": {"required": ["notice_type", "operator_id"]}},
+        {"if": {"required": ["notice_type"], "properties": {"notice_type": {"const": "group_recall"}}}, "then": {"required": ["group_id"]}}
+      ]
+    }
+  }
+}

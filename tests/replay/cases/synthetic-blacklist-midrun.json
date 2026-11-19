@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.1",
+  "case_id": "synthetic_blacklist_midrun",
+  "source": "synthetic",
+  "categories": ["生成期间黑名单变更", "发布前复查"],
+  "acceptance_ids": ["AC-14"],
+  "environment": {"bot_id": "u_bot", "owner_id": "u_owner", "blacklist": [], "config_overrides": {}},
+  "anchor": {"message_id": "m_q", "group_id": "g_1", "trigger": "top_level_at"},
+  "events": [
+    {"time": 33000, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_q", "user_id": "u_4", "sender": {"user_id": "u_4", "nickname": "n_4"}, "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "推荐几部适合周末看的电影。"}}]}
+  ],
+  "mocks": {"model": [{"name": "answer", "response": "可以看看几部轻松的家庭喜剧。", "delay_ms": 4000, "error": null}], "tools": [], "faults": [{"name": "blacklist_update", "response": {"add_users": ["u_4"], "source": "owner_config_reload"}, "delay_ms": 2000, "error": null}]},
+  "annotations": {"status": "draft", "confidence": "high", "should_reply": false, "required_context_ids": [], "forbidden_context_ids": [], "expected_relations": [], "expected_route": "chat", "should_clarify": false, "expected_knowledge_ids": [], "answer_points": ["发布前重新检查黑名单，发现 u_4 已被拉黑，取消发送", "出站不发出，run 记录取消原因"], "notes": ["准入时 u_4 不在黑名单，run 正常创建；生成期间主人热加载配置把 u_4 加入黑名单（RUN-07 发布前复查）。", "should_reply=false 表示最终不应发送；route 记录的是被取消前的正常路线。", "完全手写的虚构场景，账号、群、正文、卡片与网址均为虚构。", "主人已确认此策略（决策 D-12，2026-11-07）。"]},
+  "legacy_result": {"status": "not_applicable", "responses": [], "latency_ms": null, "search_count": null, "read_count": null, "image_extraction": null, "diagnostics_status": "not_applicable"},
+  "provenance": {"extractor": "handwritten-v1", "source_kind": "handwritten_synthetic", "source_snapshot_id": null, "extracted_at": null, "read_mode": "not_applicable", "pseudonymization": "not_applicable", "key_id": null, "storage_policy": "synthetic_versionable", "order_basis": "handwritten_order", "window": null, "event_sources": [{"message_id": "m_q", "source_row_id": "synthetic_blacklist_midrun_1", "phase": "anchor"}], "reply_relations": [], "uncertainties": []}
+}

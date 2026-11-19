@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.1",
+  "case_id": "synthetic_teach_duplicate",
+  "source": "synthetic",
+  "categories": ["主人教学", "重复教学事件", "幂等"],
+  "acceptance_ids": ["AC-10"],
+  "environment": {"bot_id": "u_bot", "owner_id": "u_owner", "blacklist": [], "config_overrides": {}},
+  "anchor": {"message_id": "m_t2", "group_id": "g_1", "trigger": "top_level_at"},
+  "events": [
+    {"time": 27000, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_t1", "user_id": "u_owner", "sender": {"user_id": "u_owner", "nickname": "n_owner"}, "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "教学 本群：「开黑时间」指每周五晚上九点的固定组队时间。"}}]},
+    {"time": 27000, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_t1", "user_id": "u_owner", "sender": {"user_id": "u_owner", "nickname": "n_owner"}, "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "教学 本群：「开黑时间」指每周五晚上九点的固定组队时间。"}}]},
+    {"time": 27030, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_1", "user_id": "u_2", "sender": {"user_id": "u_2", "nickname": "n_2"}, "message": [{"type": "text", "data": {"text": "机器人好像没反应？"}}]},
+    {"time": 27040, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_t2", "user_id": "u_owner", "sender": {"user_id": "u_owner", "nickname": "n_owner"}, "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "教学 本群：「开黑时间」指每周五晚上九点的固定组队时间。"}}]}
+  ],
+  "mocks": {"model": [], "tools": [{"name": "knowledge_commit:m_t1", "response": {"id": "kb_syn_kaihei"}, "delay_ms": 0, "error": null}], "faults": [{"name": "slow_ack:m_t1", "response": {"note": "m_t1 的确认回复延迟到 m_t2 之后才发出"}, "delay_ms": 45000, "error": null}]},
+  "annotations": {"status": "draft", "confidence": "high", "should_reply": true, "required_context_ids": ["m_t1"], "forbidden_context_ids": ["m_1"], "expected_relations": [], "expected_route": "teaching", "should_clarify": false, "expected_knowledge_ids": ["kb_syn_kaihei"], "answer_points": ["m_t1 的重复投递按消息 ID 去重，只创建一个 run、一次提交", "m_t2 与已有记录内容和作用域完全相同：不新增第二条记录，修订号不增加", "回复说明这条本群知识已记录，无需重复提交"], "notes": ["m_t2 是主人以为没生效而重发的新消息（新消息 ID），按内容与作用域判定为重复教学，属于 LEARN-03 的幂等要求。", "若实现选择把 m_t2 视为一次内容不变的更正，也必须保持修订号不变、不产生重复条目。", "完全手写的虚构场景，账号、群、正文、卡片与网址均为虚构。", "主人已确认此策略（决策 D-12，2026-11-07）。"]},
+  "legacy_result": {"status": "not_applicable", "responses": [], "latency_ms": null, "search_count": null, "read_count": null, "image_extraction": null, "diagnostics_status": "not_applicable"},
+  "provenance": {"extractor": "handwritten-v1", "source_kind": "handwritten_synthetic", "source_snapshot_id": null, "extracted_at": null, "read_mode": "not_applicable", "pseudonymization": "not_applicable", "key_id": null, "storage_policy": "synthetic_versionable", "order_basis": "handwritten_order", "window": null, "event_sources": [{"message_id": "m_t1", "source_row_id": "synthetic_teach_duplicate_1", "phase": "context"}, {"message_id": "m_t1", "source_row_id": "synthetic_teach_duplicate_2", "phase": "context"}, {"message_id": "m_1", "source_row_id": "synthetic_teach_duplicate_3", "phase": "context"}, {"message_id": "m_t2", "source_row_id": "synthetic_teach_duplicate_4", "phase": "anchor"}], "reply_relations": [], "uncertainties": []}
+}

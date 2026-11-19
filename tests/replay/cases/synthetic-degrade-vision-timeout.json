@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.1",
+  "case_id": "synthetic_degrade_vision_timeout",
+  "source": "synthetic",
+  "categories": ["随附图片", "图片提取超时", "降级"],
+  "acceptance_ids": ["AC-11"],
+  "environment": {"bot_id": "u_bot", "owner_id": "u_owner", "blacklist": [], "config_overrides": {}},
+  "anchor": {"message_id": "m_img_q", "group_id": "g_1", "trigger": "top_level_at"},
+  "events": [
+    {"time": 29000, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_img_q", "user_id": "u_1", "sender": {"user_id": "u_1", "nickname": "n_1"}, "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "image", "data": {"media_id": "media_syn_meme", "availability": "synthetic", "reason": "synthetic_fixture", "content_sha256": null, "local_metadata": {"width": 640, "height": 480}}}, {"type": "text", "data": {"text": "这张图是什么梗？"}}]}
+  ],
+  "mocks": {"model": [{"name": "vision:primary", "response": null, "delay_ms": 25000, "error": "TimeoutError"}, {"name": "answer", "response": "这张图我这次没能识别出来，可以说一下图里的文字或换张清晰点的图吗？", "delay_ms": 200, "error": null}], "tools": [], "faults": [{"name": "vision_timeout", "response": {"stage": "image_clue_extraction"}, "delay_ms": 25000, "error": "TimeoutError"}]},
+  "annotations": {"status": "draft", "confidence": "medium", "should_reply": true, "required_context_ids": [], "forbidden_context_ids": [], "expected_relations": [], "expected_route": "clarify", "should_clarify": true, "expected_knowledge_ids": [], "answer_points": ["明确说明这次没能识别图片", "不臆测图片内容或梗名", "请用户补充图中文字或描述，或稍后重试", "在总期限内结束，不无限重试"], "notes": ["可用的备用视觉模型可在剩余期限内重试一次；备用模型不具备图片能力时不得把图片请求交给它（MIG-05）。", "完全手写的虚构场景，账号、群、正文、卡片与网址均为虚构。"]},
+  "legacy_result": {"status": "not_applicable", "responses": [], "latency_ms": null, "search_count": null, "read_count": null, "image_extraction": null, "diagnostics_status": "not_applicable"},
+  "provenance": {"extractor": "handwritten-v1", "source_kind": "handwritten_synthetic", "source_snapshot_id": null, "extracted_at": null, "read_mode": "not_applicable", "pseudonymization": "not_applicable", "key_id": null, "storage_policy": "synthetic_versionable", "order_basis": "handwritten_order", "window": null, "event_sources": [{"message_id": "m_img_q", "source_row_id": "synthetic_degrade_vision_timeout_1", "phase": "anchor"}], "reply_relations": [], "uncertainties": []}
+}

@@ -1,0 +1,251 @@
+# group-agent settings example. Copy to config/settings.toml (git-ignored) and adjust.
+# Secrets are read from the env file below; never put keys in this file.
+# Validate without network: group-agent config validate --settings config/settings.example.toml
+# Changes take effect on the next controlled Agent start.
+
+schema_version = 1
+instance_root = ".."                    # relative to this settings file
+secrets_file = "private/credentials.env" # all other paths are relative to instance_root
+
+[identity]
+bot_id = "BOT"                           # synthetic identity, replaced by replay environment
+owner_id = "OWNER"
+blocked_users = []
+blocked_groups = []
+
+[budgets]
+deadline_seconds = 120
+context_messages = 80                    # explicit reply-chain baseline, not a token budget
+daily_cost_cny = 3.0                     # D-04: 80 % degrade, 100 % owner only (--serve)
+
+[serve]
+db_path = "data/serve/serve.sqlite3"  # --serve store, relative to instance_root
+# D-19: the owner's `#新版` command may send its answer (the only send path). Default off;
+# `--allow-owner-send` also turns it on for one process.
+owner_command_send = false
+# D-21: fixed reply when every answer attempt fails (recorded like an answer, run marked
+# fallback_reply; clarify/teaching unaffected). "" = no reply. Default: the old bot's wording.
+# fallback_reply = "这个史暂时没解析成功，稍后再 @ 我试试。"
+# Read-only sync of the bot account's own messages (the old bot's replies; SnowLuma does
+# not push them) from SnowLuma's message store into this store, every self_sync_interval_s
+# seconds (self_sync.py). Never a reply trigger; unreadable store = one warning, serve goes on.
+self_sync = false
+self_sync_interval_s = 5
+# snowluma_db = "../SnowLuma/data/<bot_id>/messages.db"  # required with self_sync=true
+# D-20: "processing" emoji on each admitted request (reaction.py). Off in the shadow trial
+# (AstrBot reacts); turn on at the cutover. `--reaction` / `--no-reaction` override it.
+processing_reaction = false
+reaction_emoji_id = "424"
+# Cutover: send every answer (live_send.py; reply + text, rate-limited, re-checked). Off by
+# default; when on, the #新版 command does not send. `--live-send` / `--no-live-send`.
+live_send = false
+# Owner remote control (owner_control.py): the owner sends #暂停 / #恢复 / #状态 (exact text, in
+# any group, with or without @bot) to pause or resume replies; the pause survives restarts.
+owner_control = true
+
+[knowledge]
+# T4.1/T4.3: the framework's own knowledge base (migrated by scripts/migrate_knowledge.py;
+# owner teaching writes here; example images in images/ beside it). Relative to this file.
+db_path = "data/knowledge/knowledge.sqlite3"
+
+[models]
+# D-20 breaker for Gemini (decision and answer): after breaker_failures consecutive
+# timeouts / connection errors / HTTP 429 or 5xx, skip Gemini for breaker_cooldown_s, then
+# let one probe through. DeepSeek decides and answers meanwhile.
+breaker_failures = 2
+breaker_cooldown_s = 300
+
+[retention]
+# docs/CONTEXT-RETENTION.md proposal, enforced by `group-agent --cleanup` and by the shadow's
+# periodic cleanup (retention.py). Ordinary messages: recent_hours; messages related to a
+# reply request (the request, its reply ancestors, marked context): related_days (hard limit).
+recent_hours = 24
+related_days = 7
+max_messages_per_group = 15000
+max_branch_messages = 300
+max_branch_depth = 16
+media_max_mb = 2048
+cleanup_interval_minutes = 60
+
+[collection]
+# Ordinary message collection and immediate image caching (media.py).
+disabled_groups = []                      # groups whose ordinary messages are not stored
+# media_dir = "data/media"             # default: <database>.media beside the database
+max_image_mb = 10
+image_host_suffixes = ["qpic.cn", "nt.qq.com.cn"]   # download only from QQ image hosts
+download_per_second = 2
+max_concurrent_downloads = 2
+max_pending_downloads = 200
+
+[models.jev]
+# Decision model for routing and ambiguity judgments. Protocol notes: docs/JEV-SYSTEMONE.md
+protocol = "systemone"
+base_url_env = "RELAY_BASE_URL"
+api_key_env = "JEV_API_KEY"
+model = "jev-latest"                      # resolves to jev-1.14.0 as of 2026-11-07
+timeout_seconds = 5
+# CNY per 1M tokens as shown on the relay pricing page; meaning of the second value unconfirmed.
+price_input = 0.21
+price_output = 0.0
+
+[models.gemini]
+# Answers, image understanding and tool loop. Access notes: docs/MODEL-ACCESS.md
+protocol = "google-genai"
+base_url_env = "RELAY_BASE_URL"
+api_key_env = "GEMINI_API_KEY"
+model = "gemini-4-hydrogen"
+api_version = "v1beta"                    # relay has no /v1; google-genai>=3 defaults to v1
+timeout_seconds = 120
+thinking_level = "HIGH"                   # thinking tokens are billed as output
+max_output_tokens = 8192                  # includes thinking; forced calls reached 2,048
+# CNY per 1M tokens; hydrogen temporarily uses the previous flash estimate.
+price_input = 0.225
+price_cached_input = 0.0225
+price_output = 1.125
+
+[models.deepseek]
+# Structured extraction and fallback answers via the Anthropic Messages protocol.
+protocol = "anthropic"
+base_url_env = "RELAY_BASE_URL"
+api_key_env = "DEEPSEEK_API_KEY"
+model = "deepseek-v4.1-flash"
+timeout_seconds = 90
+thinking_budget_tokens = 0                # relay ignores it; reasoning stays hidden but billed
+max_output_tokens = 4096
+price_input = 0.45
+price_cached_input = 0.045
+price_output = 2.25
+
+# Optional official fallback: uncomment this table and set [model_roles].fallback
+# to "deepseek_official". Reuses the official search key; no new secret is required.
+# [models.deepseek_official]
+# protocol = "openai-compatible"
+# base_url = "https://api.deepseek.com"
+# api_key_env = "DEEPSEEK_SEARCH_API_KEY"
+# model = "deepseek-flash"                 # V4.1-Flash-1017, checked 2026-11-14
+# reasoning_effort = "low"
+# timeout_seconds = 45
+# max_output_tokens = 2048
+# price_input = 2.0                        # peak CNY / 1M; off-peak actual is half
+# price_cached_input = 0.04
+# price_output = 8.0
+
+# Vertex (V1): vertexai=True, API key, v1 and the full global resource path
+# projects/<project>/locations/<location>/publishers/google/models/<model>; one transport
+# attempt. The project ID/number is read from the secrets file (project_env, default
+# GOOGLE_CLOUD_PROJECT). base_url/base_url_env are not used. `model` stays the short name.
+# Prices: per 1M tokens in price_currency; USD converted with [billing] usd_cny (B1).
+# Every settled call is also appended to the account book ([billing] db_path, B2).
+# [billing]
+# usd_cny = 7.2
+# usd_cny_date = "2026-11-14"
+# google_search_usd_per_1000 = 14.0
+# db_path = "data/billing/account.sqlite3"
+#
+# [models.vertex_hydrogen]
+# protocol = "google-genai"
+# vertex = true
+# channel = "vertex"                       # default for vertex tables
+# price_currency = "USD"
+# price_effective = "2026-11-14"
+# location = "global"                      # default; the key's default region 404s Hydrogen
+# api_key_env = "GOOGLE_CLOUD_API_KEY"
+# model = "gemini-4-hydrogen"
+# timeout_seconds = 90
+# thinking_level = "LOW"
+# max_output_tokens = 8192
+# price_input = 1.50                       # Global Standard
+# price_cached_input = 1.50                # cache price unverified: bill at input price
+# price_output = 7.50
+#
+# [models.vertex_flash]
+# protocol = "google-genai"
+# vertex = true
+# api_key_env = "GOOGLE_CLOUD_API_KEY"
+# model = "gemini-3.8-flash"
+# timeout_seconds = 30
+# thinking_level = "LOW"
+# max_output_tokens = 2048
+# price_currency = "USD"
+# price_input = 0.75                       # Global promotion until 2026-12-31
+# price_cached_input = 0.75
+# price_output = 3.75                      # 1.50 / 7.50 from 2027-01-01
+#
+# Fixed roles (V2; uncomment with the tables above and the official DeepSeek table):
+# [model_roles]
+# answer = "vertex_hydrogen"
+# decision = "vertex_flash"
+# fallback = "deepseek_official"
+
+[web]
+# Gemini search and URL-context requests each carry only one built-in tool.
+# The DeepSeek endpoint below is the fallback for failed/empty searches or page reads.
+provider = "deepseek"
+api_key_env = "DEEPSEEK_SEARCH_API_KEY"
+base_url = "https://api.deepseek.com"
+price_per_call = 0.005                    # official CNY per search/fetch, checked 2026-11-14
+search_provider = "gemini"              # "deepseek" | "gemini"
+gemini_credentials_model = "gemini"       # configured Google model alias for credentials/prices
+gemini_model = "gemini-3.8-flash"
+gemini_url_context = true                # verified URL extraction; 400 falls back to DeepSeek
+deepseek_fallback = true
+gemini_thinking_level = "LOW"             # HIGH took 27-62 s per search in the probe
+gemini_fee_per_query = 0.006              # CNY; relay list price 6 / 1000 searches, charged per query (upper bound)
+# Legacy DeepSeek-primary mode only: one Gemini search supplements it when a
+# DeepSeek query returns no results or fails, or the route decision flags recent_news
+# (needs a digest of today's / recent news). It counts against the run's 3 searches and is
+# skipped when less than supplement_min_seconds of tool time is left. Ignored when
+# search_provider = "gemini". run_live.py --no-gemini-supplement switches it off.
+gemini_supplement = false
+supplement_min_seconds = 15
+# Breaker: after 3 consecutive supplement failures (no sources / timeout / error) skip the
+# supplement in this process for 30 minutes (recorded as skipped_breaker).
+supplement_breaker_failures = 3
+supplement_breaker_seconds = 1800
+# V3 separate bindings replace the legacy keys search_provider, gemini_model,
+# gemini_credentials_model, gemini_url_context, deepseek_fallback and gemini_supplement
+# (remove them when setting `search`). Each value is "deepseek" or a google-genai model
+# alias; that alias supplies credentials, model and token prices. "" = no fallback.
+# Google search grounding: USD 14 / 1000 queries beyond 5,000 free per month (B3).
+# search = "vertex_flash"
+# search_fallback = "deepseek"
+# fetch = "deepseek"                       # "vertex_flash" = URL context, after V4 verifies it
+# fetch_fallback = ""
+# gemini_fee_per_query = 0.1               # CNY per Google query, conservative until B3
+
+# Role aliases refer to model definitions; providers stay behind protocol adapters.
+[model_roles]
+answer = "gemini"
+decision = "gemini"
+fallback = "deepseek"
+
+[agent]
+answer_tool_loop = true
+# Skip the separate classifier for ordinary requests; answer tools decide whether to search.
+# Sparse requests and group-info questions retain model judgement; teaching stays code parsed.
+# "model" restores the separate classifier for comparison.
+decision_mode = "lightweight"
+# LOW for ordinary pictures/jokes; HIGH only for a decision explicitly marked complex.
+# "auto" restores HIGH for pictures or web material. Explicit LOW/HIGH are also supported.
+answer_thinking = "complex_only"
+# V2 fixed roles: answer role, then the fallback role. true restores the historical
+# same-model HIGH -> LOW retry in between.
+answer_same_model_retry = false
+
+# Optional prompt files; omitted sections use built-in defaults.
+# [prompts]
+# persona = "config/prompts.example/persona.md"
+# evidence = "config/prompts/evidence.md"
+# reply_contract = "config/prompts/reply-contract.md"
+
+[runtime]
+global_active = 4
+user_active = 2
+global_queue = 32
+user_queue = 4
+web_searches = 3
+web_reads = 5
+tool_timeout_seconds = 25
+finish_reserve_seconds = 30
+degrade_ratio = 0.8
+cap_ratio = 1.0

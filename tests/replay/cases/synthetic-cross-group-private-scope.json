@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.1",
+  "case_id": "synthetic_cross_group_private_scope",
+  "source": "synthetic",
+  "categories": ["跨群提问", "个人上下文作用域"],
+  "acceptance_ids": ["AC-09"],
+  "environment": {"bot_id": "u_bot", "owner_id": "u_owner", "blacklist": [], "config_overrides": {}},
+  "anchor": {"message_id": "m_g1_q", "group_id": "g_1", "trigger": "top_level_at"},
+  "events": [
+    {"time": 23000, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_2", "message_id": "m_g2_1", "user_id": "u_1", "sender": {"user_id": "u_1", "nickname": "n_1"}, "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "下周三我要去面试，有点紧张。"}}]},
+    {"time": 23005, "self_id": "u_bot", "post_type": "message_sent", "message_type": "group", "sub_type": "normal", "group_id": "g_2", "message_id": "m_g2_bot", "user_id": "u_bot", "sender": {"user_id": "u_bot", "nickname": "n_bot"}, "message": [{"type": "reply", "data": {"id": "m_g2_1"}}, {"type": "text", "data": {"text": "放轻松，提前准备好自我介绍就好。"}}]},
+    {"time": 23500, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_g1_1", "user_id": "u_2", "sender": {"user_id": "u_2", "nickname": "n_2"}, "message": [{"type": "text", "data": {"text": "今天好热。"}}]},
+    {"time": 23600, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_g1_q", "user_id": "u_1", "sender": {"user_id": "u_1", "nickname": "n_1"}, "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "我之前跟你说过我哪天去面试来着？"}}]}
+  ],
+  "mocks": {"model": [], "tools": [], "faults": []},
+  "annotations": {"status": "draft", "confidence": "medium", "should_reply": true, "required_context_ids": [], "forbidden_context_ids": ["m_g2_1", "m_g2_bot", "m_g1_1"], "expected_relations": [], "expected_route": "chat", "should_clarify": false, "expected_knowledge_ids": [], "answer_points": ["说明在本群的记录里没有看到用户提过面试日期，可以请用户直接告诉", "不得引用、暗示或复述另一个群中的聊天内容（包括“下周三”）"], "notes": ["同一账号在两个群出现；群聊天记录和个人上下文按“机器人实例 + 群 + 用户”隔离（USER-01、USER-03）。", "若以后主人启用跨群个人记忆，需另行标注；当前默认群内隔离（需求第 8 节）。", "完全手写的虚构场景，账号、群、正文、卡片与网址均为虚构。"]},
+  "legacy_result": {"status": "not_applicable", "responses": [], "latency_ms": null, "search_count": null, "read_count": null, "image_extraction": null, "diagnostics_status": "not_applicable"},
+  "provenance": {"extractor": "handwritten-v1", "source_kind": "handwritten_synthetic", "source_snapshot_id": null, "extracted_at": null, "read_mode": "not_applicable", "pseudonymization": "not_applicable", "key_id": null, "storage_policy": "synthetic_versionable", "order_basis": "handwritten_order", "window": null, "event_sources": [{"message_id": "m_g2_1", "source_row_id": "synthetic_cross_group_private_scope_1", "phase": "context"}, {"message_id": "m_g2_bot", "source_row_id": "synthetic_cross_group_private_scope_2", "phase": "context"}, {"message_id": "m_g1_1", "source_row_id": "synthetic_cross_group_private_scope_3", "phase": "context"}, {"message_id": "m_g1_q", "source_row_id": "synthetic_cross_group_private_scope_4", "phase": "anchor"}], "reply_relations": [{"source_message_id": "m_g2_bot", "target_message_id": "m_g2_1", "kind": "reply_to", "status": "resolved", "evidence": "top_level_reply_segment", "uncertainty": null}], "uncertainties": []}
+}

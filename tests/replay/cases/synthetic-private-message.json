@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.1",
+  "case_id": "synthetic_private_message",
+  "source": "synthetic",
+  "categories": ["私聊", "准入"],
+  "acceptance_ids": ["AC-01"],
+  "environment": {"bot_id": "u_bot", "owner_id": "u_owner", "blacklist": [], "config_overrides": {}},
+  "anchor": {"message_id": "m_pm", "group_id": null, "trigger": "none"},
+  "events": [
+    {"time": 10100, "self_id": "u_bot", "post_type": "message", "message_type": "private", "sub_type": "friend", "message_id": "m_pm", "user_id": "u_1", "sender": {"user_id": "u_1", "nickname": "n_1"}, "message": [{"type": "text", "data": {"text": "在吗？帮我查一下明天的天气。"}}]}
+  ],
+  "mocks": {"model": [], "tools": [], "faults": []},
+  "annotations": {"status": "draft", "confidence": "high", "should_reply": false, "required_context_ids": [], "forbidden_context_ids": [], "expected_relations": [], "expected_route": null, "should_clarify": false, "expected_knowledge_ids": [], "answer_points": [], "notes": ["当前回复策略只由群内真实顶层 at 触发（CTX-02、MIG-01），私聊不创建回复 run；若以后开放私聊需重新标注。", "私聊内容不得进入任何群的上下文。", "完全手写的虚构场景，账号、群、正文、卡片与网址均为虚构。", "主人已确认此策略（决策 D-12，2026-11-07）。"]},
+  "legacy_result": {"status": "not_applicable", "responses": [], "latency_ms": null, "search_count": null, "read_count": null, "image_extraction": null, "diagnostics_status": "not_applicable"},
+  "provenance": {"extractor": "handwritten-v1", "source_kind": "handwritten_synthetic", "source_snapshot_id": null, "extracted_at": null, "read_mode": "not_applicable", "pseudonymization": "not_applicable", "key_id": null, "storage_policy": "synthetic_versionable", "order_basis": "handwritten_order", "window": null, "event_sources": [{"message_id": "m_pm", "source_row_id": "synthetic_private_message_1", "phase": "anchor"}], "reply_relations": [], "uncertainties": []}
+}

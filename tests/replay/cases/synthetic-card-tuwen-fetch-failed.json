@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.1",
+  "case_id": "synthetic_card_tuwen_fetch_failed",
+  "source": "synthetic",
+  "categories": ["卡片分享", "图文分享卡片", "先发材料后@", "网页失败"],
+  "acceptance_ids": ["AC-24", "AC-11"],
+  "environment": {"bot_id": "u_bot", "owner_id": "u_owner", "blacklist": [], "config_overrides": {}},
+  "anchor": {"message_id": "m_q", "group_id": "g_1", "trigger": "top_level_at"},
+  "events": [
+    {"time": 43000, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_card", "user_id": "u_1", "sender": {"user_id": "u_1", "nickname": "n_1"}, "message": [{"type": "json", "data": {"data": "{\"app\":\"com.tencent.tuwen.lua\",\"bizsrc\":\"qqconnect.sdkshare\",\"view\":\"news\",\"ver\":\"0.0.0.1\",\"prompt\":\"[分享]虚构市将试点“夜间公交”新线路\",\"config\":{\"ctime\":43000,\"forward\":1,\"type\":\"normal\"},\"meta\":{\"news\":{\"app_type\":1,\"appid\":\"synthetic_appid\",\"ctime\":43000,\"desc\":\"首批 3 条线路将于下月起运营，末班车延长至凌晨两点。\",\"jumpUrl\":\"https://news.example.invalid/city/night-bus-fake\",\"preview\":\"https://static.example.invalid/night-bus.jpg\",\"tag\":\"虚构日报\",\"tagIcon\":\"https://static.example.invalid/tag-icon.png\",\"title\":\"虚构市将试点“夜间公交”新线路\",\"uin\":\"u_1\"}}}"}}]},
+    {"time": 43008, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_q", "user_id": "u_1", "sender": {"user_id": "u_1", "nickname": "n_1"}, "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "上面这篇主要讲了啥？有几条线路？"}}]}
+  ],
+  "mocks": {"model": [], "tools": [{"name": "web_fetch", "response": null, "delay_ms": 25000, "error": "ReadTimeout"}], "faults": []},
+  "annotations": {"status": "draft", "confidence": "medium", "should_reply": true, "required_context_ids": ["m_card"], "forbidden_context_ids": [], "expected_relations": [{"source_message_id": "m_q", "target_message_id": "m_card", "kind": "refers_to", "status": "expected", "evidence": "handwritten_annotation", "uncertainty": "无显式引用，依据同一用户 8 秒前发卡片及“上面这篇”"}], "expected_route": "web", "should_clarify": false, "expected_knowledge_ids": [], "answer_points": ["卡片标题、摘要、来源（虚构日报）和链接进入材料", "读取原文超时后只按卡片信息作答：试点夜间公交，首批 3 条线路，下月起运营，末班车延长到凌晨两点", "明确说明未能打开原文，内容只来自卡片摘要"], "notes": ["完全手写的虚构场景，账号、群、正文、卡片与网址均为虚构。"]},
+  "legacy_result": {"status": "not_applicable", "responses": [], "latency_ms": null, "search_count": null, "read_count": null, "image_extraction": null, "diagnostics_status": "not_applicable"},
+  "provenance": {"extractor": "handwritten-v1", "source_kind": "handwritten_synthetic", "source_snapshot_id": null, "extracted_at": null, "read_mode": "not_applicable", "pseudonymization": "not_applicable", "key_id": null, "storage_policy": "synthetic_versionable", "order_basis": "handwritten_order", "window": null, "event_sources": [{"message_id": "m_card", "source_row_id": "synthetic_card_tuwen_fetch_failed_1", "phase": "context"}, {"message_id": "m_q", "source_row_id": "synthetic_card_tuwen_fetch_failed_2", "phase": "anchor"}], "reply_relations": [], "uncertainties": []}
+}

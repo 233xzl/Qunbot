@@ -1,0 +1,12 @@
+{
+  "schema_version": "route-exclusions-1",
+  "description": "Cases excluded from route and clarify scoring because the material the label depends on is not available in replay. Scored by group_agent.replay.live_scoring; ids are batch pseudonyms, reasons are generic.",
+  "cases": {
+    "real_m_bc75f750d0634d3c56e26d0f": {
+      "batch": "batch-02",
+      "reason": "replay_material_missing",
+      "detail": "quoted forward/card payload was removed at extraction",
+      "added": "2026-11-08"
+    }
+  }
+}

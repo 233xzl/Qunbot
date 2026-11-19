@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.1",
+  "case_id": "synthetic_bot_self_message",
+  "source": "synthetic",
+  "categories": ["机器人自身消息", "准入"],
+  "acceptance_ids": ["AC-01"],
+  "environment": {"bot_id": "u_bot", "owner_id": "u_owner", "blacklist": [], "config_overrides": {}},
+  "anchor": {"message_id": "m_self", "group_id": "g_1", "trigger": "none"},
+  "events": [
+    {"time": 10300, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_q", "user_id": "u_1", "sender": {"user_id": "u_1", "nickname": "n_1"}, "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "你能 @ 一下你自己吗？"}}]},
+    {"time": 10305, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_self", "user_id": "u_bot", "sender": {"user_id": "u_bot", "nickname": "n_bot"}, "message": [{"type": "reply", "data": {"id": "m_q"}}, {"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": " 好的，这是我 @ 自己的测试。"}}]}
+  ],
+  "mocks": {"model": [], "tools": [], "faults": []},
+  "annotations": {"status": "draft", "confidence": "high", "should_reply": false, "required_context_ids": [], "forbidden_context_ids": [], "expected_relations": [], "expected_route": null, "should_clarify": false, "expected_knowledge_ids": [], "answer_points": [], "notes": ["SnowLuma 可能把机器人自己发出的消息以普通 message 事件回推；即使顶层含 at(u_bot)，发送者等于 self_id 时也必须过滤，防止自我回环。", "m_q 是另一条正常触发的请求，不在本样本中评估。", "完全手写的虚构场景，账号、群、正文、卡片与网址均为虚构。"]},
+  "legacy_result": {"status": "not_applicable", "responses": [], "latency_ms": null, "search_count": null, "read_count": null, "image_extraction": null, "diagnostics_status": "not_applicable"},
+  "provenance": {"extractor": "handwritten-v1", "source_kind": "handwritten_synthetic", "source_snapshot_id": null, "extracted_at": null, "read_mode": "not_applicable", "pseudonymization": "not_applicable", "key_id": null, "storage_policy": "synthetic_versionable", "order_basis": "handwritten_order", "window": null, "event_sources": [{"message_id": "m_q", "source_row_id": "synthetic_bot_self_message_1", "phase": "context"}, {"message_id": "m_self", "source_row_id": "synthetic_bot_self_message_2", "phase": "anchor"}], "reply_relations": [{"source_message_id": "m_self", "target_message_id": "m_q", "kind": "reply_to", "status": "resolved", "evidence": "top_level_reply_segment", "uncertainty": null}], "uncertainties": []}
+}

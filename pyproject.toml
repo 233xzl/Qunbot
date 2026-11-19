@@ -1,0 +1,53 @@
+[project]
+name = "qunbot"
+version = "0.1.0"
+description = "QQ group chat bot backend with per-group configuration and a local admin UI"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "pillow>=11,<13",
+    "pydantic-ai-slim[anthropic,google,openai]>=1,<2",
+    "tomli-w>=1,<2",
+    "uvicorn>=0.30,<1",
+    "websockets>=14,<16",
+]
+
+[project.scripts]
+qunbot = "group_agent.app:main"
+group-agent = "group_agent.app:main"
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "pytest-asyncio>=0.25,<2", "ruff>=0.9,<1", "jsonschema>=4.23,<5"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/group_agent"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src/**/*.py", "/src/group_agent/admin/example.toml", "/src/group_agent/admin/static/*.html",
+    "/src/group_agent/admin/static/*.css", "/src/group_agent/admin/static/*.js", "/scripts/**/*.py",
+    "/tests/unit/*.py", "/tests/replay/cases/*.json", "/tests/replay/schema.json",
+    "/tests/replay/route_exclusions.json", "/config/settings.example.toml",
+    "/config/prompts.example/persona.md", "/config/credentials.example.txt",
+    "/docs/ADMIN-UI.md", "/docs/CONFIGURATION.md", "/docs/SYNTHETIC-CASES.md", "/README.md",
+    "/qunbot.cmd", "/LICENSE", "/ACKNOWLEDGEMENTS.md", "/uv.lock", "/pyproject.toml", "/.gitignore", "/.gitattributes",
+]

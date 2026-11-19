@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.1",
+  "case_id": "synthetic_redelivery_lost_ack",
+  "source": "synthetic",
+  "categories": ["重复事件", "回执丢失", "出站幂等"],
+  "acceptance_ids": ["AC-15"],
+  "environment": {"bot_id": "u_bot", "owner_id": "u_owner", "blacklist": [], "config_overrides": {}},
+  "anchor": {"message_id": "m_q", "group_id": "g_1", "trigger": "top_level_at"},
+  "events": [
+    {"time": 34000, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_q", "user_id": "u_1", "sender": {"user_id": "u_1", "nickname": "n_1"}, "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "“欲速则不达”是什么意思？"}}]},
+    {"time": 34000, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_q", "user_id": "u_1", "sender": {"user_id": "u_1", "nickname": "n_1"}, "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "“欲速则不达”是什么意思？"}}]},
+    {"time": 34005, "self_id": "u_bot", "post_type": "message_sent", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_bot_echo", "user_id": "u_bot", "sender": {"user_id": "u_bot", "nickname": "n_bot"}, "message": [{"type": "reply", "data": {"id": "m_q"}}, {"type": "text", "data": {"text": "意思是过于求快，反而达不到目的。"}}]},
+    {"time": 34030, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_q", "user_id": "u_1", "sender": {"user_id": "u_1", "nickname": "n_1"}, "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "“欲速则不达”是什么意思？"}}]}
+  ],
+  "mocks": {"model": [{"name": "answer", "response": "意思是过于求快，反而达不到目的。", "delay_ms": 200, "error": null}], "tools": [], "faults": [{"name": "event_redelivery", "response": {"message_id": "m_q", "extra_deliveries": 2, "reason": "ws_reconnect"}, "delay_ms": 0, "error": null}, {"name": "outbound_ack_lost", "response": {"action": "send_group_msg", "platform_delivered": true}, "delay_ms": 5000, "error": "ActionTimeout"}]},
+  "annotations": {"status": "draft", "confidence": "high", "should_reply": true, "required_context_ids": [], "forbidden_context_ids": ["m_bot_echo"], "expected_relations": [], "expected_route": "chat", "should_clarify": false, "expected_knowledge_ids": [], "answer_points": ["同一 m_q 的三次投递只创建一个 run（入口按消息 ID 去重）", "发送动作超时、没有回执时，出站记录进入 uncertain，不自动重发", "群内最终只有一条回答；随后回推的自发消息 m_bot_echo 可按幂等键/内容 hash 关联为该出站的确认（P0b 核对）"], "notes": ["P0a 要求事件去重与出站幂等；重启后的 sending 核对属于 P0b（RUN-12）。", "完全手写的虚构场景，账号、群、正文、卡片与网址均为虚构。"]},
+  "legacy_result": {"status": "not_applicable", "responses": [], "latency_ms": null, "search_count": null, "read_count": null, "image_extraction": null, "diagnostics_status": "not_applicable"},
+  "provenance": {"extractor": "handwritten-v1", "source_kind": "handwritten_synthetic", "source_snapshot_id": null, "extracted_at": null, "read_mode": "not_applicable", "pseudonymization": "not_applicable", "key_id": null, "storage_policy": "synthetic_versionable", "order_basis": "handwritten_order", "window": null, "event_sources": [{"message_id": "m_q", "source_row_id": "synthetic_redelivery_lost_ack_1", "phase": "anchor"}, {"message_id": "m_q", "source_row_id": "synthetic_redelivery_lost_ack_2", "phase": "followup"}, {"message_id": "m_bot_echo", "source_row_id": "synthetic_redelivery_lost_ack_3", "phase": "followup"}, {"message_id": "m_q", "source_row_id": "synthetic_redelivery_lost_ack_4", "phase": "followup"}], "reply_relations": [{"source_message_id": "m_bot_echo", "target_message_id": "m_q", "kind": "reply_to", "status": "resolved", "evidence": "top_level_reply_segment", "uncertainty": null}], "uncertainties": []}
+}

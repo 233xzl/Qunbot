@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.1",
+  "case_id": "synthetic_tool_budget_near_timeout",
+  "source": "synthetic",
+  "categories": ["工具预算用满", "工具接近超时", "总期限收尾"],
+  "acceptance_ids": ["AC-21"],
+  "environment": {"bot_id": "u_bot", "owner_id": "u_owner", "blacklist": [], "config_overrides": {}},
+  "anchor": {"message_id": "m_q", "group_id": "g_1", "trigger": "top_level_at"},
+  "events": [
+    {"time": 41000, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_q", "user_id": "u_2", "sender": {"user_id": "u_2", "nickname": "n_2"}, "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "帮我查查虚构乐队“灰雀”最近的巡演安排，越全越好。"}}]}
+  ],
+  "mocks": {"model": [{"name": "answer", "response": "只查到很有限的信息，没能核实完整巡演安排。", "delay_ms": 1000, "error": null}], "tools": [{"name": "web_search", "response": {"results": []}, "delay_ms": 24000, "error": null}, {"name": "web_search", "response": {"results": []}, "delay_ms": 24000, "error": null}, {"name": "web_search", "response": {"results": []}, "delay_ms": 24000, "error": null}, {"name": "web_search", "response": {"results": []}, "delay_ms": 24000, "error": null}, {"name": "web_fetch", "response": {"status": 200, "text": "虚构页面"}, "delay_ms": 24000, "error": null}, {"name": "web_fetch", "response": {"status": 200, "text": "虚构页面"}, "delay_ms": 24000, "error": null}, {"name": "web_fetch", "response": {"status": 200, "text": "虚构页面"}, "delay_ms": 24000, "error": null}, {"name": "web_fetch", "response": {"status": 200, "text": "虚构页面"}, "delay_ms": 24000, "error": null}, {"name": "web_fetch", "response": {"status": 200, "text": "虚构页面"}, "delay_ms": 24000, "error": null}, {"name": "web_fetch", "response": {"status": 200, "text": "虚构页面"}, "delay_ms": 24000, "error": null}], "faults": []},
+  "annotations": {"status": "draft", "confidence": "high", "should_reply": true, "required_context_ids": [], "forbidden_context_ids": [], "expected_relations": [], "expected_route": "web", "should_clarify": false, "expected_knowledge_ids": [], "answer_points": ["搜索 3 次、读取 5 次的预算用满后不再调用（第 4 次搜索、第 6 次读取记 budget_exhausted）", "每次调用的超时取 min(25 秒, 剩余期限 - 30 秒收尾预留)，时间不够时记 no_time_left", "run 在 120 秒总期限内结束并回复，说明未能核实完整信息"], "notes": ["参数取需求第 8 节初始值（policy.RuntimeLimits）：搜索 3 次、读取 5 次、单次工具 25 秒、收尾预留 30 秒、总期限 120 秒。", "完全手写的虚构场景，账号、群、正文、卡片与网址均为虚构。"]},
+  "legacy_result": {"status": "not_applicable", "responses": [], "latency_ms": null, "search_count": null, "read_count": null, "image_extraction": null, "diagnostics_status": "not_applicable"},
+  "provenance": {"extractor": "handwritten-v1", "source_kind": "handwritten_synthetic", "source_snapshot_id": null, "extracted_at": null, "read_mode": "not_applicable", "pseudonymization": "not_applicable", "key_id": null, "storage_policy": "synthetic_versionable", "order_basis": "handwritten_order", "window": null, "event_sources": [{"message_id": "m_q", "source_row_id": "synthetic_tool_budget_near_timeout_1", "phase": "anchor"}], "reply_relations": [], "uncertainties": []}
+}

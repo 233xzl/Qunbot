@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.1",
+  "case_id": "synthetic_degrade_model_rate_limit",
+  "source": "synthetic",
+  "categories": ["主模型限流", "备用模型", "降级"],
+  "acceptance_ids": ["AC-11"],
+  "environment": {"bot_id": "u_bot", "owner_id": "u_owner", "blacklist": [], "config_overrides": {}},
+  "anchor": {"message_id": "m_q", "group_id": "g_1", "trigger": "top_level_at"},
+  "events": [
+    {"time": 31000, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_q", "user_id": "u_3", "sender": {"user_id": "u_3", "nickname": "n_3"}, "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "帮我把“明天见”翻译成日语。"}}]}
+  ],
+  "mocks": {"model": [{"name": "primary", "response": null, "delay_ms": 300, "error": "RateLimitError_429"}, {"name": "fallback", "response": "また明日（またあした）。", "delay_ms": 800, "error": null}], "tools": [], "faults": []},
+  "annotations": {"status": "draft", "confidence": "high", "should_reply": true, "required_context_ids": [], "forbidden_context_ids": [], "expected_relations": [], "expected_route": "chat", "should_clarify": false, "expected_knowledge_ids": [], "answer_points": ["主模型限流后切换备用模型，共享本次总期限与尝试次数上限", "回答：また明日（またあした）"], "notes": ["诊断应记录主模型限流与切换原因；SDK 重试与备用尝试单独计数。", "完全手写的虚构场景，账号、群、正文、卡片与网址均为虚构。"]},
+  "legacy_result": {"status": "not_applicable", "responses": [], "latency_ms": null, "search_count": null, "read_count": null, "image_extraction": null, "diagnostics_status": "not_applicable"},
+  "provenance": {"extractor": "handwritten-v1", "source_kind": "handwritten_synthetic", "source_snapshot_id": null, "extracted_at": null, "read_mode": "not_applicable", "pseudonymization": "not_applicable", "key_id": null, "storage_policy": "synthetic_versionable", "order_basis": "handwritten_order", "window": null, "event_sources": [{"message_id": "m_q", "source_row_id": "synthetic_degrade_model_rate_limit_1", "phase": "anchor"}], "reply_relations": [], "uncertainties": []}
+}

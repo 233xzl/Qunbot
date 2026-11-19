@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "case_id": "synthetic_image_recall",
+  "source": "synthetic",
+  "categories": ["先发图", "引用追问", "撤回", "指代词"],
+  "acceptance_ids": ["AC-06", "AC-08", "AC-20"],
+  "environment": {"bot_id": "u_bot", "owner_id": "u_owner", "blacklist": [], "config_overrides": {}},
+  "anchor": {"message_id": "m_image_question", "group_id": "g_test", "trigger": "top_level_at"},
+  "events": [
+    {"time": 3000, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_test", "message_id": "m_image", "user_id": "u_alice", "sender": {"user_id": "u_alice", "nickname": "n_alice"}, "message": [{"type": "image", "data": {"media_id": "media_invented", "availability": "synthetic", "reason": "synthetic_fixture", "content_sha256": null, "local_metadata": {"width": 64, "height": 64}}}]},
+    {"time": 3001, "self_id": "u_bot", "post_type": "notice", "notice_type": "group_recall", "group_id": "g_test", "message_id": "m_image", "user_id": "u_alice", "operator_id": "u_alice"},
+    {"time": 3002, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_test", "message_id": "m_image_question", "user_id": "u_alice", "sender": {"user_id": "u_alice", "nickname": "n_alice"}, "message": [{"type": "reply", "data": {"id": "m_image"}}, {"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "这张图里画了什么？"}}]}
+  ],
+  "mocks": {"model": [{"name": "answer", "response": "图片已撤回，请重新提供你想讨论的材料。", "delay_ms": 0, "error": null}], "tools": [], "faults": []},
+  "annotations": {"status": "reviewed", "confidence": "high", "should_reply": true, "required_context_ids": [], "forbidden_context_ids": ["m_image"], "expected_relations": [{"source_message_id": "m_image_question", "target_message_id": "m_image", "kind": "reply_to", "status": "expected", "evidence": "handwritten_annotation", "uncertainty": null}], "expected_route": "clarify", "should_clarify": true, "expected_knowledge_ids": [], "answer_points": ["不能将撤回图片作为有效证据", "请重新提供材料，不猜测图片内容"], "notes": ["纯合成媒体元信息，没有真实图片文件或下载动作。禁止的是图片内容，不是用于判定撤回的事件元信息。"]},
+  "legacy_result": {"status": "not_applicable", "responses": [], "latency_ms": null, "search_count": null, "read_count": null, "image_extraction": null, "diagnostics_status": "not_applicable"},
+  "provenance": {"extractor": "handwritten-v1", "source_kind": "handwritten_synthetic", "source_snapshot_id": null, "extracted_at": null, "read_mode": "not_applicable", "pseudonymization": "not_applicable", "key_id": null, "storage_policy": "synthetic_versionable", "order_basis": "handwritten_order", "window": null, "event_sources": [{"message_id": "m_image", "source_row_id": "synthetic_3a", "phase": "context"}, {"message_id": "m_image", "source_row_id": "synthetic_3b", "phase": "context"}, {"message_id": "m_image_question", "source_row_id": "synthetic_3c", "phase": "anchor"}], "reply_relations": [{"source_message_id": "m_image_question", "target_message_id": "m_image", "kind": "reply_to", "status": "resolved", "evidence": "top_level_reply_segment", "uncertainty": null}], "uncertainties": []}
+}

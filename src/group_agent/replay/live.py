@@ -1,0 +1,61 @@
+"""Live-model tier of the replay runner: the agent lives in `group_agent.live_agent`.
+
+It moved there when the online mode (`orchestrator.py`) started using the same agent;
+this module keeps the replay-side import path working.
+"""
+
+from ..live_agent import (
+    ANSWER_INSTRUCTIONS,
+    CHALLENGE,
+    DECISION_INSTRUCTIONS,
+    DECISION_ONLY_TEXT,
+    IMAGE_RELATIONS,
+    NON_ANCHOR_TEXT,
+    ROUTES,
+    SUBJECT_NOTE,
+    SUBJECT_STATUS_NOTES,
+    SUPPLEMENT_REASONS,
+    TEACHING_TEXT,
+    LiveAgent,
+    LiveConfig,
+    LiveFailure,
+    Material,
+    RouteDecision,
+    RunState,
+    choose_answer_thinking,
+    group_info_queries,
+    image_parts,
+    live_agent_factory,
+    load_image,
+    render_material,
+    strip_citation_markers,
+    subject_note,
+)
+
+__all__ = [
+    "ANSWER_INSTRUCTIONS",
+    "CHALLENGE",
+    "DECISION_INSTRUCTIONS",
+    "DECISION_ONLY_TEXT",
+    "IMAGE_RELATIONS",
+    "NON_ANCHOR_TEXT",
+    "ROUTES",
+    "SUBJECT_NOTE",
+    "SUBJECT_STATUS_NOTES",
+    "SUPPLEMENT_REASONS",
+    "TEACHING_TEXT",
+    "LiveAgent",
+    "LiveConfig",
+    "LiveFailure",
+    "Material",
+    "RouteDecision",
+    "RunState",
+    "choose_answer_thinking",
+    "group_info_queries",
+    "image_parts",
+    "live_agent_factory",
+    "load_image",
+    "render_material",
+    "strip_citation_markers",
+    "subject_note",
+]

@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "case_id": "synthetic_nested_at",
+  "source": "synthetic",
+  "categories": ["引用内at不触发", "文本伪at"],
+  "acceptance_ids": ["AC-01"],
+  "environment": {"bot_id": "u_bot", "owner_id": "u_owner", "blacklist": [], "config_overrides": {}},
+  "anchor": {"message_id": "m_nested", "group_id": "g_test", "trigger": "none"},
+  "events": [
+    {"time": 2000, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_test", "message_id": "m_nested", "user_id": "u_bob", "sender": {"user_id": "u_bob", "nickname": "n_bob"}, "message": [{"type": "reply", "data": {"id": "m_missing_quote", "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "这只是引用里的内容。"}}]}}, {"type": "text", "data": {"text": "转给大家看。[CQ:at,qq=u_bot] 也是文本。"}}]}
+  ],
+  "mocks": {"model": [], "tools": [], "faults": []},
+  "annotations": {"status": "reviewed", "confidence": "high", "should_reply": false, "required_context_ids": [], "forbidden_context_ids": [], "expected_relations": [], "expected_route": null, "should_clarify": false, "expected_knowledge_ids": [], "answer_points": [], "notes": ["引用内的at与纯文本CQ码均不构成顶层真实at。被引原事件缺失，不能根据引用内容凭空补成原消息。完全虚构。"]},
+  "legacy_result": {"status": "not_applicable", "responses": [], "latency_ms": null, "search_count": null, "read_count": null, "image_extraction": null, "diagnostics_status": "not_applicable"},
+  "provenance": {"extractor": "handwritten-v1", "source_kind": "handwritten_synthetic", "source_snapshot_id": null, "extracted_at": null, "read_mode": "not_applicable", "pseudonymization": "not_applicable", "key_id": null, "storage_policy": "synthetic_versionable", "order_basis": "handwritten_order", "window": null, "event_sources": [{"message_id": "m_nested", "source_row_id": "synthetic_2", "phase": "anchor"}], "reply_relations": [{"source_message_id": "m_nested", "target_message_id": "m_missing_quote", "kind": "reply_to", "status": "unresolved", "evidence": "top_level_reply_segment", "uncertainty": "synthetic_target_not_available"}], "uncertainties": ["quoted_target_missing"]}
+}

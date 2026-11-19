@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.1",
+  "case_id": "synthetic_group_info_roles",
+  "source": "synthetic",
+  "categories": ["群信息查询", "群主与管理员"],
+  "acceptance_ids": ["AC-22"],
+  "environment": {"bot_id": "u_bot", "owner_id": "u_owner", "blacklist": [], "config_overrides": {}},
+  "anchor": {"message_id": "m_q", "group_id": "g_1", "trigger": "top_level_at"},
+  "events": [
+    {"time": 40000, "self_id": "u_bot", "post_type": "message", "message_type": "group", "sub_type": "normal", "group_id": "g_1", "message_id": "m_q", "user_id": "u_2", "sender": {"user_id": "u_2", "nickname": "n_2"}, "message": [{"type": "at", "data": {"qq": "u_bot"}}, {"type": "text", "data": {"text": "咱们群的群主是谁？管理员有哪些？小林是什么时候进群的？"}}]}
+  ],
+  "mocks": {"model": [], "tools": [{"name": "group_info", "response": {"group_id": "g_1", "group_name": "虚构读书会", "member_count": 128}, "delay_ms": 0, "error": null}, {"name": "group_member_list", "response": {"group_id": "g_1", "members": [{"user_id": "u_10", "card": "阿青", "role": "owner", "join_date": "2022-06-01"}, {"user_id": "u_11", "card": "小林", "role": "admin", "join_date": "2024-03-15"}, {"user_id": "u_12", "card": "老周", "role": "admin", "join_date": "2023-01-20"}, {"user_id": "u_2", "card": "阿木", "role": "member", "join_date": "2025-08-09"}], "truncated": true}, "delay_ms": 0, "error": null}], "faults": []},
+  "annotations": {"status": "draft", "confidence": "high", "should_reply": true, "required_context_ids": [], "forbidden_context_ids": [], "expected_relations": [], "expected_route": "chat", "should_clarify": false, "expected_knowledge_ids": [], "answer_points": ["通过群信息查询（GRP-01）确认：群主是阿青，管理员是小林和老周", "小林的入群时间是 2024-03-15", "只查本群，不输出任何账号号码", "群主/管理员身份不等于机器人主人"], "notes": ["完全手写的虚构场景，账号、群、正文、卡片与网址均为虚构。"]},
+  "legacy_result": {"status": "not_applicable", "responses": [], "latency_ms": null, "search_count": null, "read_count": null, "image_extraction": null, "diagnostics_status": "not_applicable"},
+  "provenance": {"extractor": "handwritten-v1", "source_kind": "handwritten_synthetic", "source_snapshot_id": null, "extracted_at": null, "read_mode": "not_applicable", "pseudonymization": "not_applicable", "key_id": null, "storage_policy": "synthetic_versionable", "order_basis": "handwritten_order", "window": null, "event_sources": [{"message_id": "m_q", "source_row_id": "synthetic_group_info_roles_1", "phase": "anchor"}], "reply_relations": [], "uncertainties": []}
+}
