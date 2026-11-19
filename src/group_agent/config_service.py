@@ -25,6 +25,8 @@ from .config import (
     Settings,
     WebSpec,
     MODELS_SCALARS,
+    GROUP_TOOL_LIMITS,
+    _whole,
     parse_settings,
 )
 from .policy import RuntimeLimits
@@ -163,7 +165,11 @@ def validate_keys(data):
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", gid):
             raise ConfigError("group_profiles: invalid group id")
         path = f"group_profiles.{gid}"
-        _keys(profile, {"enabled", "prompts", "model_roles", "daily_cost_cny"}, path)
+        _keys(profile, {"enabled", "prompts", "model_roles", "daily_cost_cny", "runtime"}, path)
+        runtime = profile.get("runtime", {})
+        _keys(runtime, GROUP_TOOL_LIMITS, f"{path}.runtime")
+        for key in runtime:
+            _whole(runtime, key, 0, f"{path}.runtime", minimum=0)
         if type(profile.get("enabled", False)) is not bool:
             raise ConfigError(f"{path}.enabled: expected a boolean")
         cap = profile.get("daily_cost_cny", 1)

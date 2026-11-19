@@ -10,6 +10,9 @@ from urllib.parse import urlsplit
 from .policy import RuntimeLimits
 
 
+GROUP_TOOL_LIMITS = {"web_searches", "web_reads"}
+
+
 class ConfigError(ValueError):
     """Errors contain field names, never supplied configuration values."""
 
@@ -123,6 +126,13 @@ class Settings:
         ):
             object.__setattr__(self, name, freeze(getattr(self, name)))
 
+    def runtime_for_group(self, group_id, base: RuntimeLimits) -> RuntimeLimits:
+        from dataclasses import replace
+
+        profile = self.group_profiles.get(group_id, {})
+        overrides = profile.get("runtime") if profile.get("enabled") else None
+        return replace(base, **overrides) if overrides else base
+
     def for_group(self, group_id):
         from dataclasses import replace
 
@@ -133,6 +143,7 @@ class Settings:
         roles.setdefault("decision", roles.get("answer", "gemini"))
         return replace(
             self,
+            runtime=self.runtime_for_group(group_id, self.runtime),
             prompts={**self.prompts, **profile.get("prompts", {})},
             model_roles={**roles, **profile.get("model_roles", {})},
         )
@@ -730,7 +741,7 @@ def parse_settings(data: dict, path: Path) -> Settings:
     runtime_values = {
         k: (
             _whole(runtime, k, getattr(defaults, k), "runtime", minimum=0)
-            if k in {"web_searches", "web_reads"}
+            if k in GROUP_TOOL_LIMITS
             else _number(
                 runtime,
                 k,

@@ -76,6 +76,8 @@
   "runtime.tool_timeout_seconds": "工具超时（秒）",
   "runtime.user_active": "每用户运行并发",
   "runtime.user_queue": "每用户等待队列",
+  "group.tool_budget_help": "每条请求单独计算搜索和网页读取次数。填 0 关闭对应操作。",
+  "group.inherit_count": "继承全局（{count} 次）",
   "runtime.web_reads": "每次请求读取上限",
   "runtime.web_searches": "每次请求搜索上限",
   "model_roles.answer": "回答模型",

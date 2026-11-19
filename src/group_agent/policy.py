@@ -72,6 +72,9 @@ class ToolBudget:
 
     def try_consume(self, tool: str) -> bool:
         kind = "search" if tool in WEB_SEARCH_TOOLS else "read" if tool in WEB_READ_TOOLS else None
+        if tool == "short_link_expand":
+            # Expansion is part of the ensuing video read, not a second read.
+            return self.left["read"] > 0
         if kind is None:
             return True
         if self.left[kind] <= 0:

@@ -466,6 +466,14 @@ def test_bilibili_short_link_and_video_api():
     assert tool.budget.left["read"] == 4
 
 
+def test_disabled_reads_skip_short_link_expansion():
+    tool = make_tool(FakeClient(), limits=RuntimeLimits(web_reads=0))
+    assert asyncio.run(tool.read_link("https://b23.tv/x")) is None
+    assert [(call["name"], call["status"]) for call in tool.calls] == [
+        ("short_link_expand", "budget_exhausted")
+    ]
+
+
 def test_short_link_to_private_target_is_refused():
     def handler(request):
         return httpx.Response(302, headers={"location": "http://10.0.0.1/"})

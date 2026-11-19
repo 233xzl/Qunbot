@@ -252,7 +252,7 @@ async def test_disabling_live_send_blocks_owner_confirmation(tmp_path):
 async def test_profiles_capture_before_queue_and_inherit_per_field(tmp_path):
     _, _, base = fixture_instance(tmp_path)
     profiles = {
-        "A": {"enabled": True, "prompts": {"persona": "Alpha"}},
+        "A": {"enabled": True, "prompts": {"persona": "Alpha"}, "runtime": {"web_searches": 0}},
         "B": {"enabled": True, "model_roles": {"answer": "deepseek"}},
     }
     first = replace(base, group_profiles=profiles, revision="group-v1")
@@ -277,6 +277,8 @@ async def test_profiles_capture_before_queue_and_inherit_per_field(tmp_path):
             intake.intake({**event(first, gid, gid), "group_id": gid})
         await until(lambda: len(orch._run_agents) == 2)
         assert set(orch._run_agents.values()) == {a, b}
+        captured = {rid: limits.web_searches for rid, limits in orch._run_limits.items()}
+        assert sorted(captured.values()) == [0, base.limits.web_searches]
         updated = replace(
             first,
             revision="group-v2",
@@ -285,6 +287,7 @@ async def test_profiles_capture_before_queue_and_inherit_per_field(tmp_path):
         )
         await c.apply_config(updated)
         assert set(orch._run_agents.values()) == {a, b}
+        assert captured == {rid: limits.web_searches for rid, limits in orch._run_limits.items()}
         assert "A" not in orch.group_agents
         assert orch.group_agents["B"].config.prompt_text["answer"].startswith("Global")
         assert orch.group_agents["B"].gemini.spec.name == "deepseek"
@@ -326,7 +329,9 @@ def test_admin_group_scope_budget_and_usage(tmp_path):
         client.portal.call(observe_group)
         cfg = client.get("/api/config").json()
         cfg["data"]["budgets"]["daily_cost_cny"] = 18
-        cfg["data"]["group_profiles"] = {"A": {"enabled": True, "daily_cost_cny": 5}}
+        cfg["data"]["group_profiles"] = {
+            "A": {"enabled": True, "daily_cost_cny": 5, "runtime": {"web_reads": 0}}
+        }
         draft = client.post(
             "/api/config/draft",
             json={"data": cfg["data"], "prompts": {}, "expected": cfg["draft_revision"]},
@@ -336,6 +341,10 @@ def test_admin_group_scope_budget_and_usage(tmp_path):
             json={"expected": cfg["published_revision"], "draft_revision": draft["draft_revision"]},
         ).raise_for_status()
         assert client.post("/api/runtime/start", json={}).json()["state"] == "running"
+
+        assert client.get("/api/config").json()["data"]["group_profiles"]["A"]["runtime"] == {
+            "web_reads": 0
+        }
 
         def charge(gid, amount):
             token = CURRENT_GROUP.set(gid)

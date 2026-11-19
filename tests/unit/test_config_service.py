@@ -38,6 +38,40 @@ def test_publish_snapshot_conflict_and_rollback(tmp_path):
     assert service.report()["last_runtime"]["effective_revision"] == settings.revision
 
 
+def test_group_tool_limits_inherit_and_round_trip(tmp_path):
+    source = draft(
+        tmp_path,
+        """
+[runtime]
+web_searches = 4
+web_reads = 2
+[group_profiles.A]
+enabled = true
+[group_profiles.A.runtime]
+web_searches = 0
+[group_profiles.B]
+enabled = false
+[group_profiles.B.runtime]
+web_reads = 9
+""",
+    )
+    service = ConfigService(tmp_path / "versions-store")
+    service.publish(source, None)
+    settings = load_settings(service.root)
+    a = settings.for_group("A").limits
+    assert (a.web_searches, a.web_reads) == (0, 2)
+    for gid in ("B", "C"):
+        assert settings.for_group(gid).limits == settings.limits
+
+
+@pytest.mark.parametrize(
+    "field", ["web_reads = -1", "web_searches = 1.5", "web_reads = true", "deadline_seconds = 1"]
+)
+def test_group_tool_limits_validate(tmp_path, field):
+    with pytest.raises(ConfigError, match=r"group_profiles.A.runtime\."):
+        load_settings(draft(tmp_path, f"[group_profiles.A.runtime]\n{field}\n"))
+
+
 def test_failed_publish_and_external_edit_leave_pointer(tmp_path, monkeypatch):
     import group_agent.config_service as module
 

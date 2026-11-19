@@ -263,13 +263,15 @@ class Orchestrator(RunFlow):
         trace.profile_fields = (
             sorted(
                 f"{section}.{key}"
-                for section in ("prompts", "model_roles")
+                for section in ("prompts", "model_roles", "runtime")
                 for key in profile.get(section, {})
             )
             if profile.get("enabled")
             else []
         )
-        self._run_limits[trace.run_id] = self._limits
+        self._run_limits[trace.run_id] = self._base_settings.runtime_for_group(
+            trace.group_id, self._limits
+        )
         self._run_revisions[trace.run_id] = self._base_settings.revision
 
     async def retire_models(self):

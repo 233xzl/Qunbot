@@ -28,7 +28,7 @@ const descriptions = {
   overview: "了解群聊 Agent 的运行状态、用量与近期活动。",
   requests: "查看每次请求的状态、耗时与调用记录。",
   persona: "塑造回答风格。应用后，新请求使用新的人格与提示词。",
-  profiles: "按群覆盖提示词、模型用途和每日限额。",
+  profiles: "按群设置提示词、模型用途、搜索与网页读取次数和每日限额。",
   models: "管理模型连接、调用参数与回答角色。",
   search: "设置搜索和网页读取，以及每次请求的工具预算。",
   policy: "设置群聊访问范围、并发与回复策略。",
@@ -710,6 +710,14 @@ function profileEditor() {
         `<label class="field">${esc(settingsText.label(["model_roles", key]))}<select ${scoped("model_roles", key)}><option value="">继承全局 · ${esc(inherited)}</option>${aliases.map((id) => `<option ${value === id ? "selected" : ""} value="${esc(id)}">本群 · ${esc(id)}</option>`).join("")}</select></label>`,
       );
     }
+    fields.push(`<p class="muted">${esc(settingsText.t("group.tool_budget_help"))}</p>`);
+    for (const key of ["web_searches", "web_reads"]) {
+      const inherited = cfg.data.runtime?.[key] ?? cfg.schema.runtime[key].default;
+      const hint = settingsText.t("group.inherit_count").replace("{count}", inherited);
+      fields.push(
+        `<label class="field">${esc(settingsText.label(["runtime", key]))}<input type="number" min="0" step="1" ${scoped("runtime", key)} value="${esc(profile.runtime?.[key] ?? "")}" placeholder="${esc(hint)}"></label>`,
+      );
+    }
     for (const key of Object.keys(cfg.schema.prompts)) {
       const value = profile.prompts?.[key] || "";
       const inherited = cfg.prompts[key] || cfg.prompt_defaults[key] || "";
@@ -753,12 +761,17 @@ function bindProfiles() {
     (el) =>
       (el.onchange = () => {
         const { profile: gid, section, key } = el.dataset;
+        if (section === "runtime" && !el.reportValidity()) {
+          el.value = cfg.data.group_profiles?.[gid]?.runtime?.[key] ?? "";
+          return;
+        }
         const profile = ((cfg.data.group_profiles ??= {})[gid] ??= {});
         const target = section ? (profile[section] ??= {}) : profile;
         if (el.type === "checkbox") target[key] = el.checked;
         else if (!el.value.trim()) delete target[key];
         else if (el.type === "number") target[key] = Number(el.value);
         else target[key] = el.value;
+        if (section === "runtime" && !Object.keys(target).length) delete profile.runtime;
         changed();
         if (key === "enabled") renderEditor();
         else if (section === "prompts")
