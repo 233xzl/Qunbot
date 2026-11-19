@@ -8,13 +8,13 @@ from dataclasses import replace
 import httpx
 import pytest
 
-from group_agent.config import ConfigError, JevCredentials, ModelSpec, default_channel
+from group_agent.config import ConfigError, ModelSpec, default_channel
 from group_agent.gemini_search import GeminiSearchClient
-from group_agent.models import JevClient, Ledger, LiveModel, Usage, cost_cny, list_cost
+from group_agent.models import Ledger, LiveModel, Usage, cost_cny, list_cost
 from group_agent.store import SCHEMA_VERSION, Store
 from group_agent.web import DeepSeekWebClient, WebBackends, WebCredentials, build_web_client
 from test_gemini_search import GROUNDED, SPEC, UNGROUNDED, FakeGenai, make_tool
-from test_live_replay import GEMINI, JEV, text_model
+from test_live_replay import GEMINI, text_model
 from test_vertex_routing import FIXED, VERTEX_TABLES, WEB_FIXED, write
 
 USD_TABLE = """
@@ -204,34 +204,6 @@ def test_failed_live_call_keeps_original_currency_estimate(tmp_path):
     assert failed.status == "error" and failed.list_currency == "USD"
     assert failed.list_cost > 0
     assert failed.list_cost == pytest.approx(failed.cost_cny / 7.0)
-
-
-def test_jev_client_records_judge_service():
-    body = {
-        "answers": {
-            "route": {
-                "type": "choice",
-                "choice": "web",
-                "confidence": 0.4,
-                "probabilities": {"chat": 0.3, "web": 0.7},
-            }
-        },
-        "usage": {"input_tokens": 500, "output_tokens": 40},
-    }
-    ledger = Ledger(1.0)
-    client = JevClient(
-        JEV,
-        JevCredentials("https://relay.invalid", "k"),
-        ledger,
-        transport=httpx.MockTransport(lambda request: httpx.Response(200, json=body)),
-    )
-    questions = {
-        "route": {"type": "choice", "criteria": {"chat": "chat", "web": "web"}, "question": "?"}
-    }
-    _, record = asyncio.run(client.judge("jev", {"current": "x"}, questions))
-    for item in (record, ledger.records[0]):
-        assert (item.channel, item.service, item.list_currency) == ("relay", "judge", "CNY")
-        assert item.list_cost == pytest.approx(500 * 0.21 / 1e6)
 
 
 def test_deepseek_web_records_official_channel_and_per_call_price():

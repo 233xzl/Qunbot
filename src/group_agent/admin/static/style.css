@@ -808,3 +808,32 @@ pre {
     min-width: 0;
   }
 }
+.provider-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid #e0e5ec;
+}
+.provider-row small {
+  display: block;
+  color: #667487;
+  margin-top: 5px;
+}
+.provider-row .toolbar {
+  flex-shrink: 0;
+}
+#dialog-content > .field,
+#dialog-content .field {
+  margin: 10px 0;
+}
+@media (max-width: 700px) {
+  .provider-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .provider-row .toolbar {
+    flex-wrap: wrap;
+  }
+}

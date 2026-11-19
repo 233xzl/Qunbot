@@ -18,8 +18,7 @@ LiveConfig(answer_tools=False) replays. For the anchor run:
    media cache, first frame only, downscaled, re-encoded as JPEG;
 2. local knowledge pre-search on the snapshot (free, read-only);
 3. structured route decision (Gemini `NativeOutput`, 15 s; on failure DeepSeek `ToolOutput`
-   -> `PromptedOutput` on the text, within 35 s in all; or DeepSeek alone), optional jev
-   route judgement in shadow (recorded, never used); a code rule sends chat decisions
+   -> `PromptedOutput` on the text, within 35 s in all; or DeepSeek alone). A code rule sends chat decisions
    flagged fact_check/time_sensitive to web (WEB-02); persona v3 adds two: a text chat
    question worded as time-sensitive (`time_hint`: version number, date, price, or
    "now/latest/this time" with a time-bound topic) goes to web, and a clarify decision
@@ -81,7 +80,6 @@ from .models import (
     BoundCall,
     BudgetExceeded,
     ImagePart,
-    JevClient,
     Ledger,
     LiveModel,
     ModelCallError,
@@ -268,9 +266,6 @@ class LiveConfig:
     # complex_only uses LOW for ordinary lightweight requests; guarded/model decisions
     # can select HIGH through decision.complex. auto retains the historical image/web rule.
     answer_thinking: str | None = "auto"  # auto | complex_only | default | level | None
-    jev: ModelSpec | None = None
-    jev_creds: Any = None
-    jev_transport: Any = None  # tests: httpx.MockTransport
     decision_only: bool = False  # compare deciders without answer generation
     max_images: int = 4
     image_max_side: int = 1024
@@ -802,11 +797,6 @@ class LiveAgent:
             expected_output_tokens=800,
             breaker=self.breaker,
         )
-        self.jev = (
-            JevClient(config.jev, config.jev_creds, config.ledger, transport=config.jev_transport)
-            if config.jev is not None and config.jev_creds is not None
-            else None
-        )
         self.runs: dict[str, RunState] = {}
 
     async def aclose(self) -> None:
@@ -1050,12 +1040,7 @@ class LiveAgent:
         text_parts: list[Any] = [text + note]
         parts: list[Any] = material.parts(text) if self.config.decider == "gemini" else text_parts
         started = time.perf_counter()
-        decision_task = self._structured_decision(trace, state, parts, text_parts)
-        jev_task = self._jev_shadow(trace, state, material) if self.jev else None
-        if jev_task is not None:
-            decision, _ = await asyncio.gather(decision_task, jev_task)
-        else:
-            decision = await decision_task
+        decision = await self._structured_decision(trace, state, parts, text_parts)
         self._stage(state, "decision", started)
         if decision is None:
             # Rule fallback when structured output failed entirely (AC-11 degradation).
@@ -1145,7 +1130,7 @@ class LiveAgent:
         Ordinary topics and facts are deliberately not classified here: the answer
         receives its tools directly. Teaching authorization stays in runflow.
         """
-        if self.config.decision_only or self.jev is not None:
+        if self.config.decision_only:
             return "decision_diagnostic"
         if trace.material_gaps:
             return "material_gap"
@@ -1252,35 +1237,6 @@ class LiveAgent:
         first = (state.record.get("decision_attempts") or [""])[0]
         if first.endswith(":breaker_open"):
             trace.degraded.append("decision_gemini_skipped")
-
-    async def _jev_shadow(self, trace, state, material: Material) -> None:
-        questions = {
-            "route": {
-                "type": "choice",
-                "criteria": {
-                    "chat": "可直接回答的普通问答、闲聊或对材料的解释",
-                    "local_knowledge": "询问梗、网络用语的含义或出处，先查本地梗库",
-                    "web": "需要外部事实、时效信息或核实现实事物真假",
-                    "clarify": "关键材料缺失或指代不明，需要追问",
-                    "teaching": "提问人明确要求机器人记住或更正知识",
-                },
-            }
-        }
-        state_json = {
-            "current": material.anchor_text[:500],
-            "quoted": material.quoted_text[:500],
-            "context_messages": material.stats["messages"],
-            "images": material.stats["images_attached"],
-            "knowledge_candidates": [h.entry.name for h in state.kb_hits][:5],
-        }
-        try:
-            answers, record = await self.jev.judge("jev_route", state_json, questions)
-        except ModelCallError as exc:
-            self._log_call(trace, state, "jev", exc.record)
-            state.record["jev"] = {"status": exc.kind}
-            return
-        self._log_call(trace, state, "jev", record)
-        state.record["jev"] = answers["route"]
 
     async def run_tools(self, trace: RunTrace, m: Message, budget) -> None:
         if not trace.is_anchor:

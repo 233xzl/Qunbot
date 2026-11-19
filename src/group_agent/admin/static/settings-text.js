@@ -26,7 +26,7 @@ const settingsText = (() => {
       "max",
     ],
     source: ["managed", "env", "file"],
-    protocol: ["systemone", "google-genai", "openai-compatible", "anthropic"],
+    protocol: ["openai-responses", "google-genai", "openai-compatible", "anthropic"],
     price_currency: ["CNY", "USD"],
     search_provider: ["gemini", "deepseek"],
   };

@@ -15,8 +15,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .. import received_groups
-from ..config import ConfigError
+from ..config import ConfigError, MODELS_SCALARS, _models
 from ..config_service import ConfigService, load_bundle, materialize, schema
+from ..credentials import prepare_provider_keys
 from ..runtime import RuntimeController, application_plan
 from . import monitor
 from .auth import Auth
@@ -145,6 +146,7 @@ def create_app(instance, *, demo=False, allowed_hosts=None, controller_options=N
         prompts = dict(draft.settings.prompts)
         return {
             "data": materialize(draft),
+            "retired_models": draft.retired_models,
             "prompts": prompts,
             "default_persona": LEGACY_PERSONA,
             "prompt_defaults": {
@@ -213,8 +215,60 @@ def create_app(instance, *, demo=False, allowed_hosts=None, controller_options=N
         data = await body(request)
         if not isinstance(data.get("data"), dict) or not isinstance(data.get("prompts", {}), dict):
             raise ConfigError("配置与提示词必须为对象")
+        for table in ("models", "connections", "web", "model_roles", "credentials"):
+            if not isinstance(data["data"].get(table, {}), dict):
+                raise ConfigError("模型与供应商配置格式无效")
         validate_profiles(data["data"].get("group_profiles", {}))
-        draft = service.save_editor(data["data"], data.get("prompts", {}), data.get("expected"))
+        write_keys = prepare_provider_keys(instance, data["data"], data.get("provider_keys", []))
+        editor = data["data"]
+        previous = active().settings
+        models = editor.get("models", {})
+        web = editor.get("web", {})
+        if isinstance(models, dict) and isinstance(web, dict):
+            roles = editor.get("model_roles", {})
+            if isinstance(roles, dict):
+                for role, default in [("answer", "gemini"), ("fallback", "deepseek")]:
+                    alias = roles.get(role, default)
+                    if isinstance(alias, str) and alias in previous.models and alias not in models:
+                        raise ConfigError(f"请先换绑 {role} 使用的模型 {alias}")
+            if "search" not in web and (
+                web.get("search_provider") == "gemini" or web.get("gemini_supplement")
+            ):
+                alias = web.get("gemini_credentials_model", "gemini")
+                if isinstance(alias, str) and alias in previous.models and alias not in models:
+                    raise ConfigError(f"请先换绑搜索使用的模型 {alias}")
+        for name, conn in editor.get("connections", {}).items():
+            if not isinstance(conn, dict):
+                raise ConfigError("供应商配置格式无效")
+            if conn.get("protocol") == "systemone":
+                raise ConfigError("SystemOne 已退役，请选择其他协议")
+            if (
+                conn.get("protocol")
+                and conn.get("api_key_env")
+                and (conn.get("base_url") or conn.get("base_url_env") or conn.get("vertex"))
+            ):
+                _models(
+                    {
+                        "models": {
+                            "provider": {
+                                **conn,
+                                "model": "probe",
+                                "price_input": 0,
+                                "price_output": 0,
+                            }
+                        }
+                    }
+                )
+        for name, model in models.items():
+            if (
+                name not in MODELS_SCALARS
+                and isinstance(model, dict)
+                and model.get("protocol") == "systemone"
+            ):
+                raise ConfigError("SystemOne 已退役，请选择其他协议")
+        draft = service.save_editor(
+            data["data"], data.get("prompts", {}), data.get("expected"), before_write=write_keys
+        )
         effective = load_bundle(draft.path, overrides)
         return {
             "draft_revision": draft.revision,
@@ -232,7 +286,14 @@ def create_app(instance, *, demo=False, allowed_hosts=None, controller_options=N
             service.publish(source, expected, rollback_of=rollback_of)
             return active().settings
 
-        return await controller.apply_config(candidate.settings, publish=publish)
+        return await controller.apply_config(
+            candidate.settings,
+            publish=publish,
+            reload_credentials=bool(
+                candidate.settings.credential_refs
+                and any(k.startswith("QUNBOT_KEY_") for k in candidate.settings.credential_refs)
+            ),
+        )
 
     @app.post("/api/config/apply")
     async def apply(request: Request):

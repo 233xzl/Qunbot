@@ -155,12 +155,6 @@ class Settings:
 
 
 @dataclass(frozen=True)
-class JevCredentials:
-    base_url: str = field(repr=False)
-    api_key: str = field(repr=False)
-
-
-@dataclass(frozen=True)
 class ModelCredentials:
     base_url: str = field(repr=False)
     api_key: str = field(repr=False)
@@ -168,7 +162,7 @@ class ModelCredentials:
     project: str | None = field(default=None, repr=False)
 
 
-MODEL_PROTOCOLS = {"systemone", "google-genai", "anthropic", "openai-compatible"}
+MODEL_PROTOCOLS = {"systemone", "google-genai", "anthropic", "openai-compatible", "openai-responses"}
 GOOGLE_THINKING_LEVELS = {"MINIMAL", "LOW", "MEDIUM", "HIGH"}
 ENV_NAME = re.compile(r"[A-Z][A-Z0-9_]*")
 API_VERSION = re.compile(r"v[0-9]+(?:alpha|beta)?[0-9]*")
@@ -556,7 +550,7 @@ def _models(data: dict, usd_cny: float = BillingSpec().usd_cny) -> dict[str, Mod
         max_output = table.get("max_output_tokens")
         effort = table.get("reasoning_effort")
         if effort is not None and (
-            protocol != "openai-compatible"
+            protocol not in {"openai-compatible", "openai-responses"}
             or not isinstance(effort, str)
             or effort not in {"none", "minimal", "low", "medium", "high", "xhigh", "max"}
         ):
@@ -956,11 +950,6 @@ def _relay_credentials(path: Path, url_name: str, key_name: str) -> tuple[str, s
             f"secrets_file.{url_name}: expected credential-free HTTPS base URL"
         ) from None
     return values[url_name].rstrip("/"), values[key_name]
-
-
-def load_jev_credentials(path: Path) -> JevCredentials:
-    """Load on explicit live-model setup only; do not modify process environment."""
-    return JevCredentials(*_relay_credentials(path, "RELAY_BASE_URL", "JEV_API_KEY"))
 
 
 def load_web_api_key(path: Path, spec: WebSpec) -> str:

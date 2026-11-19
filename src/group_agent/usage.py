@@ -1,7 +1,7 @@
 """Persistent usage ledger and the daily cost cap (T3.9, RUN-10, D-04, D-12).
 
 `UsageLedger` is a `models.Ledger` (same reserve/settle interface used by `LiveModel`,
-`JevClient` and `web.WebTool`) that also writes every settled call to the store's
+`web.WebTool`) that also writes every settled call to the store's
 `usage_ledger` table: run id (from `runflow.CURRENT_RUN`), provider (the configured route
 name, e.g. gemini / deepseek / deepseek_web / gemini_search), model id, task, status,
 token counts, cost and time. Days are natural days in Asia/Shanghai.

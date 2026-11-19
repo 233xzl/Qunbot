@@ -5,19 +5,17 @@ import json
 from pathlib import Path
 import sqlite3
 
-import httpx
 from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.profiles import ModelProfile
 from pydantic_ai.usage import RequestUsage
 import pytest
 
-from group_agent.config import JevCredentials, ModelCredentials, ModelSpec
+from group_agent.config import ModelCredentials, ModelSpec
 from group_agent.knowledge_search import KnowledgeSnapshot
 from group_agent.models import (
     BudgetExceeded,
     ImagePart,
-    JevClient,
     Ledger,
     LiveModel,
     ModelCallError,
@@ -70,16 +68,6 @@ DEEPSEEK = ModelSpec(
     price_output=2.25,
     price_cached_input=0.045,
     max_output_tokens=4096,
-)
-JEV = ModelSpec(
-    name="jev",
-    protocol="systemone",
-    model="jev-latest",
-    base_url_env="RELAY_BASE_URL",
-    api_key_env="JEV_API_KEY",
-    timeout_seconds=5,
-    price_input=0.21,
-    price_output=0.0,
 )
 CREDS = ModelCredentials("https://relay.invalid", "test-key")
 USAGE = RequestUsage(
@@ -195,53 +183,6 @@ def test_gemini_native_decision():
     model = LiveModel(GEMINI, lambda: FunctionModel(fn, profile=profile), Ledger(1.0))
     out, record = asyncio.run(model.structured("d", "i", ["p"], RouteDecision, "native", timeout=5))
     assert out.route == "local_knowledge" and record.first_try is True
-
-
-# -- jev ------------------------------------------------------------------------------
-
-QUESTIONS = {"route": {"type": "choice", "criteria": {"chat": "a", "web": "b"}}}
-
-
-def jev_transport(body, status=200):
-    def handler(request):
-        assert request.url.path == "/v1/systemone"
-        assert request.headers["authorization"] == "Bearer k"
-        return httpx.Response(status, json=body)
-
-    return httpx.MockTransport(handler)
-
-
-def test_jev_client_validates_answers():
-    body = {
-        "answers": {
-            "route": {
-                "type": "choice",
-                "choice": "web",
-                "confidence": 0.4,
-                "probabilities": {"chat": 0.3, "web": 0.7},
-            }
-        },
-        "usage": {"input_tokens": 500, "output_tokens": 40},
-    }
-    client = JevClient(
-        JEV,
-        JevCredentials("https://relay.invalid", "k"),
-        Ledger(1.0),
-        transport=jev_transport(body),
-    )
-    answers, record = asyncio.run(client.judge("jev", {"current": "x"}, QUESTIONS))
-    assert answers["route"]["choice"] == "web" and record.usage.input == 500
-    assert record.cost_cny == pytest.approx(500 * 0.21 / 1e6)
-
-    body["answers"]["route"]["choice"] = "teaching"  # not a defined option
-    client = JevClient(
-        JEV,
-        JevCredentials("https://relay.invalid", "k"),
-        Ledger(1.0),
-        transport=jev_transport(body),
-    )
-    with pytest.raises(ModelCallError):
-        asyncio.run(client.judge("jev", {"current": "x"}, QUESTIONS))
 
 
 # -- material isolation ----------------------------------------------------------------
@@ -613,35 +554,6 @@ def test_deadline_applies_on_wall_clock(tmp_path):
     assert not [o for o in result["outbound"] if o["reply_to"] == "m_2"]
     # The cancelled in-flight call is still accounted (estimate) and nothing is pending.
     assert config.ledger.pending == 0 and config.ledger.spent > 0
-
-
-def test_jev_shadow_is_recorded_not_used(tmp_path):
-    case = make_case(tmp_path)
-    body = {
-        "answers": {
-            "route": {
-                "type": "choice",
-                "choice": "web",
-                "confidence": 0.5,
-                "probabilities": {"web": 0.6, "chat": 0.4},
-            }
-        },
-        "usage": {"input_tokens": 300, "output_tokens": 20},
-    }
-
-    def handler(request):
-        return httpx.Response(200, json=body)
-
-    config = live_config(
-        tmp_path,
-        lambda: text_model(),
-        lambda: decision_model({"route": "chat", "should_clarify": False, "reason": "x"}),
-        jev=JEV,
-        jev_creds=JevCredentials("https://relay.invalid", "k"),
-        jev_transport=httpx.MockTransport(handler),
-    )
-    _, anchor, record = run_live(case, config)
-    assert anchor["route"] == "chat" and record["jev"]["choice"] == "web"
 
 
 def test_summarize_live_rows(tmp_path):

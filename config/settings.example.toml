@@ -77,17 +77,6 @@ download_per_second = 2
 max_concurrent_downloads = 2
 max_pending_downloads = 200
 
-[models.jev]
-# Decision model for routing and ambiguity judgments. Protocol notes: docs/JEV-SYSTEMONE.md
-protocol = "systemone"
-base_url_env = "RELAY_BASE_URL"
-api_key_env = "JEV_API_KEY"
-model = "jev-latest"                      # resolves to jev-1.14.0 as of 2026-11-07
-timeout_seconds = 5
-# CNY per 1M tokens as shown on the relay pricing page; meaning of the second value unconfirmed.
-price_input = 0.21
-price_output = 0.0
-
 [models.gemini]
 # Answers, image understanding and tool loop. Access notes: docs/MODEL-ACCESS.md
 protocol = "google-genai"

@@ -1,4 +1,4 @@
-"""Live model runners: Gemini and DeepSeek through Pydantic AI, jev through HTTP.
+"""Live model runners: Gemini and DeepSeek through Pydantic AI.
 
 Access decisions follow docs/MODEL-ACCESS.md:
 
@@ -7,7 +7,6 @@ Access decisions follow docs/MODEL-ACCESS.md:
   call is required, `ToolOutput(name=...)` pinned with `tool_choice=ToolOrOutput([])`.
 - DeepSeek: `AnthropicModel` + `AnthropicProvider(base_url=relay)`, no thinking parameter;
   extraction with `ToolOutput`, `PromptedOutput` as fallback; never `NativeOutput`.
-- jev: dedicated `/v1/systemone` HTTP client (choice/score judgements only).
 
 Every call has a timeout, captures usage (input incl. cached, cached, billed output incl.
 thinking, separately reported thinking) and computes cost from configured CNY prices:
@@ -26,12 +25,11 @@ from collections.abc import Callable, Sequence
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field, fields, is_dataclass
 import inspect
-import json
 import threading
 import time
 from typing import Any
 
-from .config import JevCredentials, ModelSpec
+from .config import ModelSpec
 from .contracts import Context
 from .provider_adapters import build_pai_model, protocol_adapter  # noqa: F401 - public export
 
@@ -888,107 +886,3 @@ class BoundCall:
         if not isinstance(text, str) or not text.strip():
             raise ValueError("empty model output")
         return text
-
-
-class JevClient:
-    """`POST {relay}/v1/systemone` judgements (docs/JEV-SYSTEMONE.md)."""
-
-    def __init__(
-        self,
-        spec: ModelSpec,
-        creds: JevCredentials,
-        ledger: Ledger,
-        endpoint: str = "/v1/systemone",
-        transport=None,
-    ):
-        self.spec, self.creds, self.ledger = spec, creds, ledger
-        self.endpoint, self.transport = endpoint, transport
-
-    async def judge(self, task: str, state: Any, questions: dict) -> tuple[dict, CallRecord]:
-        import httpx
-
-        record = CallRecord(
-            task=task,
-            model=self.spec.name,
-            model_id=self.spec.model,
-            mode="systemone",
-            channel=self.spec.channel,
-            service="judge",
-        )
-        estimate = cost_cny(
-            self.spec, Usage(input=len(json.dumps(state, ensure_ascii=False)) + 400, output=100)
-        )
-        self.ledger.reserve(estimate)
-        started = time.perf_counter()
-        answers = None
-        try:
-            async with httpx.AsyncClient(
-                base_url=self.creds.base_url,
-                timeout=self.spec.timeout_seconds,
-                transport=self.transport,
-            ) as client:
-                async with asyncio.timeout(self.spec.timeout_seconds):
-                    response = await client.post(
-                        self.endpoint,
-                        json={"model": self.spec.model, "state": state, "questions": questions},
-                        headers={"Authorization": f"Bearer {self.creds.api_key}"},
-                    )
-            if response.status_code != 200:
-                record.status, record.error = "error", f"HTTPStatus:{response.status_code}"
-            else:
-                body = response.json()
-                usage = body.get("usage") or {}
-                record.usage = Usage(
-                    input=int(usage.get("input_tokens") or 0),
-                    output=int(usage.get("output_tokens") or 0),
-                    requests=1,
-                )
-                answers = validate_jev_answers(body.get("answers"), questions)
-                if answers is None:
-                    record.status, record.error = "error", "InvalidAnswers"
-        except TimeoutError:
-            record.status, record.error = "timeout", "TimeoutError"
-        except asyncio.CancelledError:
-            record.status, record.error = "cancelled", "CancelledError"
-        except Exception as exc:  # noqa: BLE001 - redacted
-            record.status, record.error = "error", _redacted_error(exc)
-        record.latency_s = time.perf_counter() - started
-        record.responses = 1 if record.usage.requests else 0
-        record.first_try = answers is not None
-        record.cost_cny = cost_cny(self.spec, record.usage)
-        record.list_cost = list_cost(self.spec, record.usage)
-        record.list_currency = self.spec.price_currency
-        self.ledger.settle(estimate, record)
-        if record.status == "cancelled":
-            raise asyncio.CancelledError()
-        if answers is None:
-            raise ModelCallError(record.status, record)
-        return answers, record
-
-
-def validate_jev_answers(answers: Any, questions: dict) -> dict | None:
-    """Check names, types, choice ids and probabilities; None when malformed."""
-    if not isinstance(answers, dict):
-        return None
-    out = {}
-    for name, question in questions.items():
-        answer = answers.get(name)
-        if not isinstance(answer, dict) or answer.get("type") != question["type"]:
-            return None
-        probs = answer.get("probabilities")
-        if not isinstance(probs, dict) or not all(
-            isinstance(v, (int, float)) for v in probs.values()
-        ):
-            return None
-        if question["type"] == "choice":
-            if answer.get("choice") not in question["criteria"]:
-                return None
-            if not set(probs) <= set(question["criteria"]):
-                return None
-        out[name] = {
-            "choice": answer.get("choice"),
-            "score": answer.get("score"),
-            "confidence": answer.get("confidence"),
-            "probabilities": {k: round(float(v), 4) for k, v in probs.items()},
-        }
-    return out

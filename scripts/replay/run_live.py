@@ -3,7 +3,7 @@
 Usage:
     python scripts/replay/run_live.py [batch_dir] --live --budget-cny 1.0
         [--limit N] [--cases id,id] [--strategy C|B|A|D] [--concurrency 2]
-        [--decider deepseek|gemini] [--jev-shadow] [--out data/live/<name>] [--rerun]
+        [--decider deepseek|gemini] [--out data/live/<name>] [--rerun]
         [--no-account-book]
     python scripts/replay/run_live.py --score-only --out data/live/<name>
 
@@ -35,7 +35,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from group_agent.billing import open_account_book, open_google_quota  # noqa: E402
 from group_agent.config import (  # noqa: E402
     ConfigError,
-    load_jev_credentials,
     load_model_credentials,
     load_settings,
 )
@@ -126,7 +125,6 @@ def build_config(args, settings) -> LiveConfig:
         deepseek = settings.models[settings.model_roles.get("fallback", "deepseek")]
     except KeyError as exc:
         raise SystemExit(f"settings: missing [models.{exc.args[0]}]") from None
-    jev = settings.models.get("jev") if args.jev_shadow else None
     # The migrated knowledge base, read-only (legacy snapshots are migration input only).
     default_kb = settings.knowledge_db
     knowledge_path = args.knowledge or (default_kb if default_kb and default_kb.is_file() else None)
@@ -173,8 +171,6 @@ def build_config(args, settings) -> LiveConfig:
         if args.answer_thinking == "NONE"
         else (args.answer_thinking or settings.answer_thinking),
         decision_only=args.decision_only,
-        jev=jev,
-        jev_creds=load_jev_credentials(settings.credentials) if jev else None,
         web_client=web_client,
         web_http=web_http,
         web_price_cny=settings.web.price_per_call,
@@ -412,7 +408,6 @@ def main(argv=None) -> int:
         action="store_true",
         help="experiment: run the Gemini supplement on every web-route run (measurement only)",
     )
-    parser.add_argument("--jev-shadow", action="store_true")
     parser.add_argument(
         "--decision-only", action="store_true", help="route decision only, no answer call"
     )
@@ -448,7 +443,6 @@ def main(argv=None) -> int:
         "decider": args.decider,
         "decision_thinking": args.decision_thinking,
         "answer_thinking": args.answer_thinking,
-        "jev_shadow": args.jev_shadow,
         "decision_only": args.decision_only,
         "budget_cny": args.budget_cny,
         "simple_thinking": args.simple_thinking,

@@ -159,10 +159,9 @@
   "option.env": "环境变量",
   "option.file": "外部文件",
   "option.managed": "管理台维护",
-  "option.systemone": "SystemOne 判断接口",
-  "option.google-genai": "Google Gemini 接口",
-  "option.openai-compatible": "OpenAI 兼容接口",
-  "option.anthropic": "Anthropic 接口",
+  "option.google-genai": "Google Gemini（generateContent）",
+  "option.openai-compatible": "OpenAI Chat Completions",
+  "option.anthropic": "Anthropic Messages",
   "option.USD": "美元",
   "option.CNY": "人民币",
   "option.gemini": "Gemini",
@@ -174,5 +173,11 @@
   "error.choice": "请选择有效选项",
   "models.*.name": "模型名称",
   "secrets_file": "凭据文件",
-  "models.*.cny_per_unit": "计价货币兑人民币汇率"
+  "models.*.cny_per_unit": "计价货币兑人民币汇率",
+  "option.openai-responses": "OpenAI Responses",
+  "provider.pending": "已输入，等待保存",
+  "provider.keep": "已配置，留空沿用",
+  "provider.enter": "输入 API 密钥",
+  "provider.configured": "已配置凭据",
+  "provider.missing": "待配置凭据"
 }

@@ -87,10 +87,11 @@ def _anthropic(spec, creds):
 
 def _openai(spec, creds):
     from openai import AsyncOpenAI
-    from pydantic_ai.models.openai import OpenAIChatModel
+    from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
     from pydantic_ai.providers.openai import OpenAIProvider
 
-    return OpenAIChatModel(
+    model_type = OpenAIResponsesModel if spec.protocol == "openai-responses" else OpenAIChatModel
+    return model_type(
         spec.model,
         provider=OpenAIProvider(
             openai_client=AsyncOpenAI(
@@ -129,6 +130,7 @@ PROTOCOL_ADAPTERS = {
     # The configured Anthropic relay ignores native schema and thinking settings.
     "anthropic": ProtocolAdapter(_anthropic),
     "openai-compatible": ProtocolAdapter(_openai),
+    "openai-responses": ProtocolAdapter(_openai),
 }
 
 

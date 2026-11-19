@@ -260,6 +260,7 @@ class ConfigBundle:
     settings: object
     revision: str
     path: Path
+    retired_models: tuple[str, ...] = ()
 
 
 def load_bundle(path: Path, overrides=None) -> ConfigBundle:
@@ -384,8 +385,28 @@ def build_bundle(data: dict, path: Path, overrides=None) -> ConfigBundle:
     sources = {
         k: "cli" if k in (overrides or {}) else "file" for k in supplied | set(overrides or {})
     }
+    # Old revisions keep their original integrity digest. Retire the shadow models
+    # only after verifying the same inputs used by the original release.
+    retired = {name for name, spec in settings.models.items() if spec.protocol == "systemone"}
+    if retired:
+        refs = {settings.models[n].api_key_env for n in retired}
+        for name in retired:
+            data["models"].pop(name)
+        retired_connections = {
+            n for n, c in data.get("connections", {}).items() if c.get("protocol") == "systemone"
+        }
+        for name in retired_connections:
+            data["connections"].pop(name)
+        for name in refs:
+            if name not in flatten({k: v for k, v in data.items() if k != "credentials"}).values():
+                data.get("credentials", {}).pop(name, None)
+        settings = replace(
+            settings,
+            models={n: v for n, v in settings.models.items() if n not in retired},
+            credential_refs=data.get("credentials", {}),
+        )
     settings = replace(settings, revision=digest, sources=sources)
-    return ConfigBundle(freeze(data), settings, digest, path)
+    return ConfigBundle(freeze(data), settings, digest, path, tuple(sorted(retired)))
 
 
 def effective(bundle):
@@ -563,7 +584,7 @@ class ConfigService:
             atomic_write(target, tomli_w.dumps(plain(data)))
             return bundle
 
-    def save_editor(self, data, prompts, expected=None):
+    def save_editor(self, data, prompts, expected=None, *, before_write=None):
         """Keep draft prompt files immutable so a concurrent editor cannot change them."""
         with write_lock(self.root):
             target = self.root / "draft.toml"
@@ -579,6 +600,8 @@ class ConfigService:
                 atomic_write(resource, text)
                 data.setdefault("prompts", {})[name] = str(resource)
             bundle = build_bundle(data, target)
+            if before_write:
+                before_write()
             atomic_write(target, tomli_w.dumps(data))
             return bundle
 

@@ -92,6 +92,10 @@ function changed() {
   $("#dirty").hidden = false;
 }
 function showLogin() {
+  pendingProviderKeys.clear();
+  $("#dialog-content").replaceChildren();
+  if ($("#dialog").open) $("#dialog").close();
+  $("#content").replaceChildren();
   $("#shell").hidden = true;
   $("#login").hidden = false;
   cfg = null;
@@ -132,6 +136,11 @@ function modal(title, html, confirm) {
   };
   $("#dialog").showModal();
 }
+$("#dialog").addEventListener("close", () => {
+  $("#dialog-content")
+    .querySelectorAll("input[type=password]")
+    .forEach((el) => (el.value = ""));
+});
 $("#dialog-close").onclick = () => $("#dialog").close();
 $("#login-form").onsubmit = async (e) => {
   e.preventDefault();
@@ -572,6 +581,8 @@ async function render() {
   renderEditor();
 }
 function field(path, value, definition = {}) {
+  if (path.join(".") === "web.api_key_env")
+    return keyField("web", "search", value);
   definition = Object.keys(definition).length
     ? definition
     : cfg.schema[path[0] + ".*"]?.[path.at(-1)] || {};
@@ -770,12 +781,7 @@ function renderEditor() {
       .join("");
     html += '<button id="add-prompt" class="secondary">＋ 添加提示词</button>';
   }
-  if (page === "models")
-    html =
-      section("model_roles", "模型用途", ["answer", "decision", "fallback"]) +
-      objects("connections", "供应商连接") +
-      objects("models", "模型配置") +
-      section("models", "熔断策略", ["breaker_failures", "breaker_cooldown_s"]);
+  if (page === "models") html = providerPage();
   if (page === "search")
     html =
       section("agent", "联网开关", ["web_enabled"]) +
@@ -809,16 +815,10 @@ function renderEditor() {
         "配置版本",
         `<p class="revision">已发布：${esc(cfg.published_revision || "—")}</p><p class="revision">运行采用：${esc(status.published_revision || "—")}</p><div class="toolbar" style="margin-top:14px"><button id="versions" class="secondary">版本历史与回滚</button><button id="reload-credentials" class="secondary">重新加载凭据</button></div>`,
       ) +
-      objects("credentials", "凭据引用") +
+      `<details><summary>高级凭据引用设置</summary>${objects("credentials", "凭据引用")}</details>` +
       panel(
         "更新管理型凭据",
-        `<p class="muted">先保存并应用凭据引用，再写入值。外部文件凭据在原文件中修改。</p><form id="credential-form"><div class="grid2" style="margin-top:18px"><div class="field"><label>引用名称</label><input id="credential-name" list="credential-names" required placeholder="例如 MODEL_API_KEY"><datalist id="credential-names">${Object.keys(
-          cfg.credentials,
-        )
-          .map((n) => `<option value="${esc(n)}"></option>`)
-          .join(
-            "",
-          )}</datalist></div><div class="field"><label>新值</label><input id="credential-value" type="password" required autocomplete="new-password"></div></div><button class="secondary">更新凭据并刷新客户端</button></form>`,
+        `<p class="muted">选择要更新的凭据并填写新值。</p><form id="credential-form"><div class="grid2" style="margin-top:18px"><div class="field"><label>凭据用途</label><select id="credential-name" required>${managedChoices()}</select></div><div class="field"><label>新值</label><input id="credential-value" type="password" required autocomplete="new-password"></div></div><button class="secondary">更新凭据并刷新客户端</button></form>`,
       ) +
       section("retention", "数据保留") +
       section("knowledge", "知识库");
@@ -829,6 +829,14 @@ function renderEditor() {
         `<p class="muted">${esc(descriptions[page])} · 修改暂存在表单中，最后统一保存。</p><div class="toolbar" style="margin-top:12px"><button id="setup-back" class="secondary" ${setupStep === 0 ? "disabled" : ""}>上一步</button><button id="setup-next" class="primary">${setupStep === setupPages.length - 1 ? "保存并完成" : "下一步"}</button><button id="setup-exit" class="secondary">退出引导</button></div>`,
       ) + html;
   $("#content").innerHTML = html;
+  if (page === "models") bindProviders();
+  document.querySelectorAll("[data-provider-key]").forEach(
+    (el) =>
+      (el.oninput = () => {
+        stageKey(...JSON.parse(el.dataset.providerKey), el.value);
+        changed();
+      }),
+  );
   if (page === "profiles") bindProfiles();
   if ($("#setup-next")) {
     $("#setup-next").onclick = () => {
@@ -911,24 +919,11 @@ function renderEditor() {
               throw Error("请输入有效名称");
             if (cfg.data[group]?.[name]) throw Error("名称已存在");
             cfg.data[group] ??= {};
-            cfg.data[group][name] =
-              group === "credentials"
-                ? { source: "managed", key: name, path: cfg.data.secrets_file }
-                : group === "connections"
-                  ? {
-                      protocol: "openai-compatible",
-                      base_url: "https://api.example.com/v1",
-                      api_key_env: "MODEL_API_KEY",
-                    }
-                  : {
-                      protocol: "openai-compatible",
-                      model: "model-id",
-                      api_key_env: "MODEL_API_KEY",
-                      base_url: "https://api.example.com/v1",
-                      timeout_seconds: 30,
-                      price_input: 0,
-                      price_output: 0,
-                    };
+            cfg.data[group][name] = {
+              source: "managed",
+              key: name,
+              path: cfg.data.secrets_file,
+            };
             changed();
             renderEditor();
           },
@@ -1066,10 +1061,14 @@ async function save(apply) {
   $("#save").disabled = $("#apply").disabled = true;
   try {
     const r = await api("config/draft", {
+      provider_keys: Array.from(pendingProviderKeys.values()),
       data: cfg.data,
       prompts: cfg.prompts,
       expected: cfg.draft_revision,
     });
+    pendingProviderKeys.clear();
+    cfg = await api("config");
+    renderEditor();
     cfg.draft_revision = r.draft_revision;
     dirty = false;
     $("#dirty").hidden = true;

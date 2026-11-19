@@ -4,7 +4,6 @@ import pytest
 
 from group_agent.config import (
     ConfigError,
-    load_jev_credentials,
     load_model_credentials,
     Settings,
     load_settings,
@@ -94,31 +93,37 @@ def test_collection_settings(tmp_path):
 def test_secrets_not_in_repr_or_errors(tmp_path):
     path = tmp_path / "test.env"
     path.write_text(
-        "RELAY_BASE_URL=https://example.invalid\nJEV_API_KEY=secret-test-value", encoding="utf-8"
+        "RELAY_BASE_URL=https://example.invalid\nGEMINI_API_KEY=secret-test-value", encoding="utf-8"
     )
-    credentials = load_jev_credentials(path)
+    credentials = load_model_credentials(
+        path, load_settings(Path("config/settings.example.toml")).models["gemini"]
+    )
     assert credentials.api_key == "secret-test-value"
     assert "secret-test-value" not in repr(credentials)
     assert "example.invalid" not in repr(credentials)
     path.write_text(
-        "RELAY_BASE_URL=https://user:secret@example.invalid\nJEV_API_KEY=secret-test-value",
+        "RELAY_BASE_URL=https://user:secret@example.invalid\nGEMINI_API_KEY=secret-test-value",
         encoding="utf-8",
     )
     with pytest.raises(ConfigError) as error:
-        load_jev_credentials(path)
+        load_model_credentials(
+            path, load_settings(Path("config/settings.example.toml")).models["gemini"]
+        )
     assert "secret" not in str(error.value).replace("secrets_file", "")
 
 
 def test_missing_key(tmp_path):
     path = tmp_path / "test.env"
     path.write_text("RELAY_BASE_URL=https://example.invalid", encoding="utf-8")
-    with pytest.raises(ConfigError, match="JEV_API_KEY"):
-        load_jev_credentials(path)
+    with pytest.raises(ConfigError, match="GEMINI_API_KEY"):
+        load_model_credentials(
+            path, load_settings(Path("config/settings.example.toml")).models["gemini"]
+        )
 
 
 def test_example_model_tables():
     models = load_settings(Path("config/settings.example.toml")).models
-    assert set(models) == {"jev", "gemini", "deepseek"}
+    assert set(models) == {"gemini", "deepseek"}
     gemini, deepseek = models["gemini"], models["deepseek"]
     assert (gemini.protocol, gemini.api_key_env, gemini.thinking_level) == (
         "google-genai",
@@ -133,7 +138,6 @@ def test_example_model_tables():
         0,
     )
     assert deepseek.price_input == 2 * gemini.price_input
-    assert models["jev"].price_output == 0.0
 
 
 MODEL_TABLE = """

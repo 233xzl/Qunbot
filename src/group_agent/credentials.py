@@ -94,3 +94,57 @@ class CredentialStore:
             atomic_write(
                 path, "".join(f"{k}={v}\n" for k, v in sorted(values.items())), private=True
             )
+
+
+def prepare_provider_keys(instance, data, replacements):
+    """Attach references to the draft. Commit validated replacements in one private write."""
+    import hashlib
+    from .config import _read_env
+    from .config_service import atomic_write, write_lock
+
+    if not isinstance(replacements, list):
+        raise ConfigError("供应商密钥格式无效")
+    target = instance / "private" / "provider-keys.env"
+    updates = {}
+    for item in replacements:
+        if not isinstance(item, dict):
+            raise ConfigError("供应商密钥格式无效")
+        group, name, secret = (item.get(k) for k in ("group", "name", "value"))
+        if group not in ("models", "connections", "web") or not isinstance(name, str):
+            raise ConfigError("请选择供应商或模型")
+        obj = (
+            data.get("web")
+            if group == "web" and name == "search"
+            else data.get(group, {}).get(name)
+        )
+        if not isinstance(obj, dict) or (group == "models" and obj.get("connection")):
+            raise ConfigError("请在所属供应商中设置密钥")
+        if secret == "":
+            continue
+        if (
+            not isinstance(secret, str)
+            or not secret
+            or secret.strip() != secret
+            or len(secret.splitlines()) != 1
+            or "\x00" in secret
+            or secret[0] in ('"', "'")
+            or secret[-1] in ('"', "'")
+        ):
+            raise ConfigError("请填写单行 API 密钥")
+        ref = (
+            "QUNBOT_KEY_" + hashlib.sha256((group + "\0" + name).encode()).hexdigest()[:24].upper()
+        )
+        obj["api_key_env"] = ref
+        data.setdefault("credentials", {})[ref] = dict(source="managed", key=ref, path=str(target))
+        updates[ref] = secret
+
+    def write():
+        if updates:
+            with write_lock(target.parent):
+                saved = _read_env(target) if target.exists() else {}
+                saved.update(updates)
+                atomic_write(
+                    target, "".join(f"{k}={v}\n" for k, v in sorted(saved.items())), private=True
+                )
+
+    return write
