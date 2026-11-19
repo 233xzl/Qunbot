@@ -1,4 +1,4 @@
-"""group-agent admin init | reset-key | serve."""
+"""Command-line management of a local Qunbot instance."""
 
 import argparse
 from pathlib import Path
@@ -45,17 +45,20 @@ def initialize(instance, source=None):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Qunbot 本地管理台")
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("init", "reset-key", "serve"):
+    for name in ("init", "reset-key", "serve", "start", "restart", "stop", "status"):
         cmd = sub.add_parser(name)
         cmd.add_argument("--instance", type=Path, required=True)
         if name == "init":
             cmd.add_argument("--settings", type=Path, help="导入已有配置，保留其数据路径")
-        if name == "serve":
+        if name in {"serve", "start"}:
+            cmd.add_argument("--host", choices=("127.0.0.1", "localhost", "::1"), default=None)
+            cmd.add_argument("--port", type=int)
             cmd.add_argument(
-                "--host", choices=("127.0.0.1", "localhost", "::1"), default="127.0.0.1"
+                "--demo",
+                action=argparse.BooleanOptionalAction,
+                default=None,
+                help="使用独立模拟库，不连接 QQ 或外部模型",
             )
-            cmd.add_argument("--port", type=int, default=8765)
-            cmd.add_argument("--demo", action="store_true", help="独立模拟库，不连接 QQ 或外部模型")
     args = parser.parse_args(argv)
     try:
         if args.command == "init":
@@ -63,8 +66,15 @@ def main(argv=None):
             print("管理密钥（仅本次显示，请保存）：" + key)
         elif args.command == "reset-key":
             print("新管理密钥（旧会话失效）：" + reset_key(args.instance))
+        elif args.command in {"start", "restart", "stop", "status"}:
+            from .background import manage
+
+            print(manage(args))
         else:
+            args.host = args.host or "127.0.0.1"
+            args.port = 8765 if args.port is None else args.port
             import uvicorn
+            from .background import admin_lock
             from .server import create_app
 
             if not 1 <= args.port <= 65535:
@@ -80,7 +90,8 @@ def main(argv=None):
                     f"127.0.0.1:{args.port}",
                 },
             )
-            uvicorn.run(app, host=args.host, port=args.port, access_log=False)
+            with admin_lock(args.instance.resolve()):
+                uvicorn.run(app, host=args.host, port=args.port, access_log=False)
     except (ConfigError, OSError) as exc:
         parser.error(str(exc))
     return 0

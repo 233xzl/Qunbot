@@ -14,9 +14,18 @@ from .config import ConfigError
 from .config_service import ConfigService, flatten, plain
 
 
-@contextmanager
 def instance_lock(db_path):
-    path = Path(str(db_path) + ".engine.lock")
+    return exclusive_lock(
+        Path(str(db_path) + ".engine.lock"), "engine: this database is already in use by an engine"
+    )
+
+
+class LockBusy(ConfigError):
+    pass
+
+
+@contextmanager
+def exclusive_lock(path, message):
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a+b") as file:
         file.seek(0)
@@ -34,7 +43,7 @@ def instance_lock(db_path):
 
                 fcntl.flock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
-            raise ConfigError("engine: this database is already in use by an engine") from None
+            raise LockBusy(message) from None
         try:
             yield
         finally:

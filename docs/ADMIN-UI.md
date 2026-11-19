@@ -15,9 +15,26 @@ qunbot admin serve --instance data/my-agent --demo --port 8765
 
 `--demo` 使用实例下独立的 `demo/` 数据库和媒体目录，固定假模型、关闭 QQ 连接及发送；可在总览启动引擎并提交模拟请求。它走正常的准入、调度、模型与账本流程，费用为零。模拟模型返回固定文本；人设采用情况可在请求详情的配置版本中核对。
 
-真实使用时省略 `--demo`。管理台启动后引擎保持停止，在总览的首次配置引导中依次设置账号、模型、凭据、搜索、人设与预算，保存并应用后再点击“启动 Agent”。界面里的“停止”只停止 Agent，管理页面仍可访问。
+前台连接真实 QQ 时省略 `--demo`。首次启动管理台时引擎保持停止，在总览的首次配置引导中依次设置账号、模型、凭据、搜索、人设与预算，保存并应用后再点击“启动 Agent”。界面里的“停止”只停止 Agent，管理页面仍可访问。
 
 端口可通过 `--port` 修改；首版 `--host` 支持 `127.0.0.1`、`localhost`、`::1`。单进程、单 worker 运行。前端为随 Python 包交付的 HTML/CSS/JavaScript，最终用户不需要 Node 或前端构建工具。
+
+## 后台部署与升级
+
+在仓库根目录使用 `uv run qunbot`，或在 Windows 使用 `.\qunbot.cmd`。下表中的 `data/my-agent` 代表已初始化的实例目录。
+
+| 操作 | 命令 |
+| --- | --- |
+| 启动后台 WebUI | `uv run qunbot admin start --instance data/my-agent` |
+| 查看后台服务状态和监听地址 | `uv run qunbot admin status --instance data/my-agent` |
+| 升级后重启 | `uv run qunbot admin restart --instance data/my-agent` |
+| 关闭后台服务和 Agent | `uv run qunbot admin stop --instance data/my-agent` |
+
+**升级。** 更新代码后执行 `uv sync --locked`，再执行表中的 `restart`。管理台会记录 Agent 状态，正常关闭旧服务并加载新版。此前运行中的 Agent 会自动启动，已暂停回复的 Agent 会恢复到暂停状态，已停止的 Agent 保持停止。重新登录 WebUI 后，可在总览确认 Agent 状态与网关连接。
+
+**端口与模式。** 首次后台启动默认使用 `127.0.0.1:8765` 和真实模式。`start` 和 `restart` 会沿用上次后台启动的参数。要更改端口，先执行 `stop`，然后在 `start` 命令后加 `--port 8766`。同样可以用 `--demo` 切换到模拟模式，用 `--no-demo` 切回真实模式。切换模式后，在 WebUI 手动启动 Agent。
+
+**从前台迁移。** 在旧 WebUI 中停止 Agent，等总览显示已停止，再到运行 `admin serve` 的终端按 `Ctrl+C`。用原实例目录执行 `admin start`，如需沿用自定义端口或模拟模式，首次启动时带上相应参数。登录后点击“启动 Agent”即可恢复运行。若启动失败，可在实例目录的 `private/background/service.log` 查看原因。
 
 ## 密钥与连接凭据
 

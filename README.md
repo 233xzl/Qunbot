@@ -16,6 +16,26 @@ Windows 安装完成后，可用仓库内的 `.\qunbot.cmd` 代替 `uv run qunbo
 
 打开 `http://127.0.0.1:8765`，登录后点击“启动 Agent”，在总览发起模拟请求。演示使用本地假模型，运行数据保存在 `data/demo`。以后使用同一实例只需执行 `admin serve`。退出管理服务可按 Ctrl+C。
 
+## 后台部署与升级
+
+对已初始化的实例执行 `admin start`，管理台会在后台运行。第一次启动后，登录 WebUI 并点击“启动 Agent”。下面以 Windows 正式实例为例，在仓库目录执行。
+
+```powershell
+.\qunbot.cmd admin start --instance data/production
+```
+
+更新代码并执行 `uv sync --locked` 后，用一条命令重启该实例。
+
+```powershell
+.\qunbot.cmd admin restart --instance data/production
+```
+
+重启会关闭旧管理服务，再从当前安装加载新版。运行中的 Agent 会自动启动，暂停回复的群机器人继续暂停，已停止的 Agent 保持停止。刷新 WebUI 后需要重新登录。`admin status` 查看后台服务状态，`admin stop` 正常关闭服务，两者都接受同一个 `--instance` 参数。
+
+其他平台可用 `uv run qunbot` 代替 `.\qunbot.cmd`。在 `admin start` 后加 `--port 8766` 可指定端口，加 `--demo` 可使用模拟环境。后续启动和重启沿用实例上次使用的端口和模式。后台日志位于实例内的 `private/background/service.log`。
+
+从旧版 `admin serve` 迁移时，先在 WebUI 停止 Agent，再退出原管理服务，随后用 `admin start` 启动同一实例并在 WebUI 恢复 Agent。现有配置、管理密钥和消息库继续使用。已经由系统服务或容器托管的部署可沿用原有重启方式。更改监听端口、切换模拟环境和排查启动失败的步骤见[管理台手册](docs/ADMIN-UI.md#后台部署与升级)。
+
 ## 接入 QQ
 
 在同一台机器上启动 SnowLuma，登录机器人的 QQ，并启用带令牌的 OneBot 正向 WebSocket 服务。记下实际监听的地址、端口和令牌。
