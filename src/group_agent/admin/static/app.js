@@ -15,7 +15,6 @@ const $ = (s) => document.querySelector(s),
 const pages = [
   ["监控", "overview", "◷", "总览"],
   ["", "requests", "☷", "请求与日志"],
-  ["", "usage", "▥", "用量与账单"],
   ["配置", "persona", "✧", "人格与提示词"],
   ["", "profiles", "⚙", "群个性化"],
   ["", "models", "⬡", "模型与供应商"],
@@ -28,7 +27,6 @@ const pages = [
 const descriptions = {
   overview: "了解群聊 Agent 的运行状态、用量与近期活动。",
   requests: "查看每次请求的状态、耗时与调用记录。",
-  usage: "最近 30 天 · 日期按 GMT+8 显示 · 费用为调用估算。",
   persona: "塑造回答风格。应用后，新请求使用新的人格与提示词。",
   profiles: "按群覆盖提示词、模型用途和每日限额。",
   models: "管理模型连接、调用参数与回答角色。",
@@ -193,8 +191,8 @@ function time(v) {
 function panel(title, body, extra = "") {
   return `<section class="panel"><div class="panel-head"><h2>${esc(title)}</h2>${extra}</div>${body}</section>`;
 }
-function badge(state) {
-  return `<span class="badge ${state === "running" || state === "succeeded" ? "green" : state === "failed" ? "orange" : ""}">${esc(stateNames[state] || state)}</span>`;
+function badge(state, label = stateNames[state] || state) {
+  return `<span class="badge ${state === "running" || state === "succeeded" ? "green" : state === "failed" ? "orange" : ""}">${esc(label)}</span>`;
 }
 function empty(text) {
   return `<div class="empty">${esc(text)}</div>`;
@@ -306,47 +304,132 @@ function bindControls() {
 function controls() {
   return `<div class="toolbar"><button class="primary" data-action="start" ${["running", "paused", "starting"].includes(status.state) ? "disabled" : ""}>启动 Agent</button><button class="secondary" data-action="${status.state === "paused" ? "resume" : "pause"}" ${!["running", "paused"].includes(status.state) ? "disabled" : ""}>${status.state === "paused" ? "恢复回复" : "暂停回复"}</button><button class="secondary" data-action="stop" ${["stopped", "failed"].includes(status.state) ? "disabled" : ""}>停止</button></div>`;
 }
-function chart(days) {
-  const max = Math.max(...days.map((x) => x.cost), 0.01);
-  return `<div class="chart">${days.length ? days.map((d, i) => `<div class="bar" style="height:${Math.max(1, (d.cost / max) * 100)}%" title="${esc(d.day)} · ¥${money(d.cost)}">${days.length < 10 || i % Math.ceil(days.length / 7) === 0 ? `<span>${esc(d.day.slice(5))}</span>` : ""}</div>`).join("") : '<div class="chart-empty">还没有消费记录，运行后将在这里展示趋势</div>'}</div>`;
+const periods = {
+  today: "今天",
+  yesterday: "昨天",
+  "24h": "近 24 小时",
+  "7d": "近 7 天",
+  "14d": "近 14 天",
+  "30d": "近 30 天",
+};
+const dimensions = { total: "合计", model: "按模型", group: "按群聊" };
+const deliveries = {
+  sent: "已发送",
+  recorded_not_sent: "已记录 · 未发送",
+  pending: "待发送",
+  sending: "发送中",
+  uncertain: "发送结果未知",
+  failed: "发送失败",
+};
+let trendPeriod = "7d",
+  dimension = "model",
+  archivePeriod = "",
+  archiveState = "",
+  observedGroup = "",
+  renderVersion = 0;
+const archiveStates = {
+  "": "全部状态",
+  queued: "排队中",
+  running: "运行中",
+  succeeded: "已完成",
+  recorded: "已记录",
+  rejected: "已拒绝",
+  failed: "失败",
+  expired: "已超时",
+  cancelled: "已取消",
+};
+function selectFilter(id, label, choices, selected) {
+  return `<label class="monitor-filter">${label}<select id="${id}">${Object.entries(
+    choices,
+  )
+    .map(
+      ([v, text]) =>
+        `<option value="${esc(v)}" ${selected === v ? "selected" : ""}>${esc(text)}</option>`,
+    )
+    .join("")}</select></label>`;
 }
-let observedGroup = null;
-function scopeQuery() {
-  return observedGroup === null ? "" : "&group_id=" + encodeURIComponent(observedGroup);
+function costText(value) {
+  if (value == null) return "费用未知";
+  if (!value) return "¥0";
+  return (
+    "¥" +
+    Number(value).toLocaleString(
+      "zh-CN",
+      value < 0.01
+        ? { maximumSignificantDigits: 3 }
+        : { minimumFractionDigits: 2, maximumFractionDigits: 4 },
+    )
+  );
 }
-async function groupFilter(includeUnknown) {
-  const ids = await api("groups");
-  const choices = [[null, "全部群"], ...ids.map((id) => [id, id])];
-  if (includeUnknown) choices.push(["", "未归属"]);
-  return `<label>群聊 <select id="observed-group">${choices.map(([id, label]) => `<option value="${esc(id ?? "*")}" ${observedGroup === id ? "selected" : ""}>${esc(label)}</option>`).join("")}</select></label>`;
+function requestCost(r) {
+  return (
+    costText(r.cost) +
+    (["running", "queued"].includes(r.state) ? " · 截至当前" : "")
+  );
 }
-function bindFilter() {
-  $("#observed-group").onchange = (e) => {
-    observedGroup = e.target.value === "*" ? null : e.target.value;
-    offset = 0;
-    render();
-  };
+const palette = [
+  "#3975df",
+  "#0c967e",
+  "#df9842",
+  "#8a64d2",
+  "#df6e86",
+  "#20a4bd",
+  "#698153",
+];
+function trend(u) {
+  if (!u.series.length) return empty("所选时段暂无调用记录");
+  const max = Math.max(...u.days.map((d) => d.cost)) || 1;
+  const bars = u.days
+    .map((d, i) => {
+      const segments = u.series
+        .map((s, j) =>
+          s.values[i] > 0
+            ? `<i style="height:${(100 * s.values[i]) / max}%;background:${palette[j % palette.length]}" title="${esc(d.day)} · ${esc(s.label)} · ${costText(s.values[i])}"></i>`
+            : "",
+        )
+        .join("");
+      const tick =
+        i % Math.ceil(u.days.length / 6) === 0 ? d.day.slice(-5) : "";
+      return `<div class="bucket" title="${esc(d.day)} · ${costText(d.cost)}">${segments}<small>${esc(tick)}</small></div>`;
+    })
+    .join("");
+  return `<div class="trend-layout"><div class="trend-plot"><small class="muted">${u.cost ? costText(max) : "¥0 · 零费用调用"}</small><div class="buckets">${bars}</div></div><div class="table-wrap series-table"><table><thead><tr><th>${{ model: "模型 / 用途", group: "群聊", total: "范围" }[dimension]}</th><th>调用</th><th>Token</th><th>消费</th></tr></thead><tbody>${u.series.map((s, i) => `<tr><td><i class="swatch" style="background:${palette[i % palette.length]}"></i>${esc(s.label)}</td><td>${num(s.calls)}</td><td>${num(s.tokens)}</td><td>${costText(s.cost)}</td></tr>`).join("")}</tbody></table></div></div>`;
+}
+const segmenter = new Intl.Segmenter("zh-CN", { granularity: "grapheme" });
+function preview(text) {
+  const chars = Array.from(segmenter.segment(text), (x) => x.segment);
+  return chars.slice(0, 5).join("") + (chars.length > 5 ? "…" : "");
 }
 function requestTable(rows) {
   return rows.length
-    ? `<div class="table-wrap"><table><thead><tr><th>请求</th><th>群号</th><th>时间</th><th>状态</th><th>耗时</th><th>路线</th></tr></thead><tbody>${rows.map((r) => `<tr><td><button class="link request-detail" data-id="${esc(r.run_id)}">${esc(r.run_id.slice(0, 10))}</button></td><td>${esc(r.group_id || "—")}</td><td>${time(r.created_at)}</td><td>${badge(r.state)}</td><td>${r.ended_at ? Math.max(0, r.ended_at - r.created_at).toFixed(1) + " 秒" : "—"}</td><td>${esc(r.route || "—")}</td></tr>`).join("")}</tbody></table></div>`
-    : empty("暂无请求记录");
+    ? `<div class="table-wrap"><table><thead><tr><th>请求消息</th><th>群聊</th><th>时间</th><th>状态</th><th>耗时</th><th>当次费用</th></tr></thead><tbody>${rows.map((r) => `<tr><td><button class="link request-detail" data-id="${esc(r.run_id)}">${esc(preview(r.preview))}</button></td><td>${esc(r.group_name)}</td><td>${time(r.created_at)}</td><td>${badge(r.state, archiveStates[r.state])}</td><td>${r.ended_at ? Math.max(0, r.ended_at - r.created_at).toFixed(1) + " 秒" : "—"}</td><td>${requestCost(r)}</td></tr>`).join("")}</tbody></table></div>`
+    : empty("暂无符合条件的请求");
 }
 function bindRequests() {
   document.querySelectorAll(".request-detail").forEach(
     (b) =>
       (b.onclick = async () => {
         try {
-          const d = await api("requests/" + b.dataset.id);
-          let detail = {};
-          try {
-            detail = JSON.parse(d.detail || "{}");
-          } catch {}
-          const profile = detail.group_overrides?.length ? detail.group_overrides.join("、") : "继承全局";
-          const scope = { global: "全局预算", group: "本群预算" }[detail.budget_scope];
+          const d = await api("requests/" + encodeURIComponent(b.dataset.id));
+          const reply =
+            d.reply_text ||
+            {
+              rejected: "已拒绝 · 无回复",
+              running: "正在生成回复",
+              queued: "排队中",
+            }[d.state] ||
+            "无回复记录";
+          let diagnostic = "";
+          if (page === "requests") {
+            let detail = {};
+            try {
+              detail = JSON.parse(d.detail) || {};
+            } catch {}
+            diagnostic = `<details class="diagnostic"><summary>运行诊断</summary><p>配置版本 ${esc(detail.config_revision || "未记录")} · 路线 ${esc(d.route || "—")} · 预算来源 ${esc({ group: "本群", global: "全局" }[detail.budget_scope] || "—")}</p><p>群配置 ${esc(detail.group_overrides?.join("、") || "继承全局")} · 错误 ${esc(d.error_kind || "无")}</p>${d.usage.length ? d.usage.map((x) => `<p>${esc(x.model)} · ${esc(x.task || x.service || "调用")} · ${costText(x.cost_cny)}</p>`).join("") : ""}</details>`;
+          }
           modal(
             "请求详情",
-            `<p class="muted">${esc(d.run_id)}</p><div class="notice">${esc(stateNames[d.state] || d.state)} · ${time(d.created_at)}<br>配置：${esc(detail.config_revision || "未记录")}<br>群配置：${detail.group_overrides ? esc(profile) : "—"}${scope ? `<br>预算触发来源：${scope}` : ""}</div><pre>${esc(JSON.stringify({ ...d, detail }, null, 2))}</pre>`,
+            `<p class="muted">${esc(d.group_name)} · ${time(d.created_at)} · ${esc(archiveStates[d.state])} · ${requestCost(d)}</p><article class="bubble"><strong>${esc(d.member_name || "未知成员")}</strong><p>${esc(d.message)}</p></article><article class="bubble answer"><strong>Bot${d.reply_kind === "busy_notice" ? " · 忙碌提示" : ""}</strong><p>${esc(reply)}</p><small>${esc(deliveries[d.delivery] || "")}</small></article>${diagnostic}`,
           );
         } catch (e) {
           toast(e.message);
@@ -354,11 +437,19 @@ function bindRequests() {
       }),
   );
 }
+function rerender() {
+  render().catch((e) => toast(e.message));
+}
 async function render() {
+  const version = ++renderVersion;
   updateBadge();
   const content = $("#content");
   if (page === "overview") {
-    const [u, rows] = await Promise.all([api("usage"), api("requests")]);
+    const [u, rows] = await Promise.all([
+      api(`usage?period=${trendPeriod}&dimension=${dimension}`),
+      api("requests?limit=5"),
+    ]);
+    if (version !== renderVersion) return;
     content.innerHTML =
       (!status.demo && cfg.data.identity?.bot_id === "BOT"
         ? panel(
@@ -371,23 +462,34 @@ async function render() {
         `<div class="status-line"><span><i class="dot ${status.gateway_connected ? "green" : ""}"></i>${status.demo ? "模拟模式 · 无外部连接" : status.gateway_connected ? "SnowLuma 已连接" : "SnowLuma 未连接"}</span><span class="muted">运行 ${status.active || 0} · 排队 ${status.queued || 0}</span></div>${status.error ? `<div class="notice">${esc(status.error)}</div>` : ""}${status.pending ? '<div class="notice">有待应用配置；维护类修改需停止引擎后重新启动。</div>' : ""}`,
         controls(),
       ) +
+      `<div class="monitor-toolbar">${selectFilter("trend-period", "时间范围", periods, trendPeriod)}<span class="muted">北京时间 · ${["today", "yesterday", "24h"].includes(trendPeriod) ? "按小时" : "按日"}</span></div>` +
+      `<div class="monitor-cards">` +
       cards([
+        ["请求次数", num(u.requests), "次", periods[trendPeriod]],
+        ["Token 用量", num(u.tokens), "", "输入 + 输出"],
         [
-          "今日消费",
-          "¥" + money(status.usage?.daily_spent_cny),
-          "CNY",
-          "普通用户预算 ¥" +
+          "区间消费",
+          costText(u.cost),
+          "",
+          "今日 " +
+            costText(u.today_cost) +
+            " / 普通用户预算 ¥" +
             money(
               status.usage?.daily_cap_cny ?? cfg.data.budgets?.daily_cost_cny,
             ),
         ],
-        ["请求次数", num(u.requests), "次", "最近 30 天"],
-        ["Token 用量", num(u.tokens), "", "最近 30 天 · 输入 + 输出"],
+        [
+          "平均耗时",
+          u.avg_seconds == null ? "—" : Number(u.avg_seconds).toFixed(1),
+          "秒",
+          "已结束请求",
+        ],
       ]) +
+      "</div>" +
       panel(
         "消费趋势",
-        chart(u.days),
-        '<span class="muted">近 30 天 · CNY</span>',
+        trend(u),
+        selectFilter("trend-dimension", "展示", dimensions, dimension),
       ) +
       panel(
         "近期请求",
@@ -400,6 +502,14 @@ async function render() {
             `<p class="muted">通过正常请求流程运行，使用本地假模型，不发送 QQ 消息。</p><form id="demo-form" class="inline-form"><input id="demo-group" aria-label="模拟群号" placeholder="模拟群号" value="DEMO"><input id="demo-text" placeholder="输入一条模拟群聊提问" value="你好，介绍一下自己"><button class="primary">发送模拟请求</button></form>`,
           )
         : "");
+    $("#trend-period").onchange = (e) => {
+      trendPeriod = e.target.value;
+      rerender();
+    };
+    $("#trend-dimension").onchange = (e) => {
+      dimension = e.target.value;
+      rerender();
+    };
     bindControls();
     bindRequests();
     if ($("#setup-start"))
@@ -407,12 +517,19 @@ async function render() {
         setupStep = 0;
         navigate(setupPages[0]);
       };
-    $("#all-requests").onclick = () => navigate("requests");
+    $("#all-requests").onclick = () => {
+      offset = 0;
+      archivePeriod = archiveState = observedGroup = "";
+      navigate("requests");
+    };
     if ($("#demo-form"))
       $("#demo-form").onsubmit = async (e) => {
         e.preventDefault();
         try {
-          await api("demo/request", { text: $("#demo-text").value, group_id: $("#demo-group").value });
+          await api("demo/request", {
+            text: $("#demo-text").value,
+            group_id: $("#demo-group").value,
+          });
           toast("模拟请求已提交");
         } catch (e) {
           toast(e.message);
@@ -420,42 +537,63 @@ async function render() {
       };
     return;
   }
-  if (page === "usage") {
-    const u = await api("usage?" + scopeQuery());
-    content.innerHTML =
-      await groupFilter(true) + cards([
-        ["消费金额", "¥" + money(u.cost), "CNY"],
-        ["请求次数", num(u.requests), "次"],
-        ["Token 用量", num(u.tokens)],
-      ]) +
-      panel("消费趋势", chart(u.days)) +
-      panel(
-        "模型用量",
-        u.providers.length
-          ? `<div class="table-wrap"><table><thead><tr><th>供应商 / 模型</th><th>调用</th><th>Token</th><th>消费</th></tr></thead><tbody>${u.providers.map((p) => `<tr><td>${esc(p.provider)}<br><small class="muted">${esc(p.model)}</small></td><td>${num(p.calls)}</td><td>${num(p.tokens)}</td><td>¥${money(p.cost)}</td></tr>`).join("")}</tbody></table></div>`
-          : empty("暂无用量记录"),
-      );
-    bindFilter();
-    return;
-  }
   if (page === "requests") {
-    if (observedGroup === "") observedGroup = null;
-    const rows = await api("requests?offset=" + offset + scopeQuery());
-    content.innerHTML = await groupFilter(false) + panel(
-      "请求列表",
-      requestTable(rows),
-      `<div class="toolbar"><button id="prev" class="secondary" ${offset === 0 ? "disabled" : ""}>上一页</button><button id="next" class="secondary" ${rows.length < 50 ? "disabled" : ""}>下一页</button></div>`,
-    );
+    const query = new URLSearchParams({ offset, limit: 51 });
+    if (archivePeriod) query.set("period", archivePeriod);
+    if (archiveState) query.set("state", archiveState);
+    if (observedGroup) query.set("group_id", observedGroup);
+    const [rows, groups] = await Promise.all([
+      api("requests?" + query),
+      api("groups?named=true"),
+    ]);
+    if (version !== renderVersion) return;
+    const groupOptions = Object.fromEntries(groups.map((g) => [g.id, g.name]));
+    const filters =
+      selectFilter(
+        "archive-period",
+        "时间",
+        { "": "全部时间", ...periods },
+        archivePeriod,
+      ) +
+      selectFilter(
+        "archive-group",
+        "群聊",
+        { "": "全部群聊", ...groupOptions },
+        observedGroup,
+      ) +
+      selectFilter("archive-state", "状态", archiveStates, archiveState);
+    content.innerHTML =
+      `<div class="monitor-toolbar filters">${filters}</div>` +
+      panel(
+        "请求记录",
+        requestTable(rows.slice(0, 50)),
+        `<div class="toolbar"><button id="prev" class="secondary" ${offset ? "" : "disabled"}>上一页</button><span class="page-count">第 ${1 + offset / 50} 页</span><button id="next" class="secondary" ${rows.length > 50 ? "" : "disabled"}>下一页</button></div>`,
+      );
+    function resetPage() {
+      offset = 0;
+      rerender();
+    }
+    $("#archive-group").onchange = (e) => {
+      observedGroup = e.target.value;
+      resetPage();
+    };
+    $("#archive-period").onchange = (e) => {
+      archivePeriod = e.target.value;
+      resetPage();
+    };
+    $("#archive-state").onchange = (e) => {
+      archiveState = e.target.value;
+      resetPage();
+    };
     $("#prev").onclick = () => {
       offset = Math.max(0, offset - 50);
-      render();
+      rerender();
     };
     $("#next").onclick = () => {
       offset += 50;
-      render();
+      rerender();
     };
     bindRequests();
-    bindFilter();
     return;
   }
   if (page === "storage") {
@@ -561,24 +699,44 @@ function objects(group, title) {
 function profileEditor() {
   const profiles = cfg.data.group_profiles || {};
   const roles = cfg.data.model_roles || {};
-  const aliases = Object.entries(cfg.data.models || {}).filter(([, m]) => m && typeof m === "object" && m.protocol !== "systemone").map(([id]) => id);
-  let html = '<form id="add-profile" class="inline-form"><input id="profile-id" placeholder="群号" required><button class="secondary">添加群</button></form>';
+  const aliases = Object.entries(cfg.data.models || {})
+    .filter(([, m]) => m && typeof m === "object" && m.protocol !== "systemone")
+    .map(([id]) => id);
+  let html =
+    '<form id="add-profile" class="inline-form"><input id="profile-id" placeholder="群号" required><button class="secondary">添加群</button></form>';
   for (const [gid, profile] of Object.entries(profiles)) {
     const enabled = profile.enabled === true;
-    const scoped = (section, key) => `data-profile="${esc(gid)}" data-section="${section}" data-key="${key}"`;
+    const scoped = (section, key) =>
+      `data-profile="${esc(gid)}" data-section="${section}" data-key="${key}"`;
     const fields = [];
     for (const key of ["answer", "decision", "fallback"]) {
       const value = profile.model_roles?.[key];
-      const inherited = roles[key] || (key === "fallback" ? "deepseek" : key === "decision" ? roles.answer || "gemini" : "gemini");
-      fields.push(`<label class="field">${esc(labels[key] || key)}<select ${scoped("model_roles", key)}><option value="">继承全局 · ${esc(inherited)}</option>${aliases.map(id => `<option ${value === id ? "selected" : ""} value="${esc(id)}">本群 · ${esc(id)}</option>`).join("")}</select></label>`);
+      const inherited =
+        roles[key] ||
+        (key === "fallback"
+          ? "deepseek"
+          : key === "decision"
+            ? roles.answer || "gemini"
+            : "gemini");
+      fields.push(
+        `<label class="field">${esc(labels[key] || key)}<select ${scoped("model_roles", key)}><option value="">继承全局 · ${esc(inherited)}</option>${aliases.map((id) => `<option ${value === id ? "selected" : ""} value="${esc(id)}">本群 · ${esc(id)}</option>`).join("")}</select></label>`,
+      );
     }
     for (const key of Object.keys(cfg.schema.prompts)) {
       const value = profile.prompts?.[key] || "";
       const inherited = cfg.prompts[key] || cfg.prompt_defaults[key] || "";
-      fields.push(`<label class="field">${esc(labels[key] || key)} · ${value ? "本群覆盖" : "继承全局"}<textarea ${scoped("prompts", key)} placeholder="${esc(inherited)}">${esc(value)}</textarea></label>`);
+      fields.push(
+        `<label class="field">${esc(labels[key] || key)} · ${value ? "本群覆盖" : "继承全局"}<textarea ${scoped("prompts", key)} placeholder="${esc(inherited)}">${esc(value)}</textarea></label>`,
+      );
     }
-    fields.push(`<label class="field">本群每日限额（元）<input type="number" step="any" min="0" ${scoped("", "daily_cost_cny")} value="${esc(profile.daily_cost_cny)}" placeholder="仅使用全局预算"></label>`);
-    html += panel(`群 ${esc(gid)}`, `<label><input type="checkbox" ${scoped("", "enabled")} ${enabled ? "checked" : ""}> 启用个性化</label>${enabled ? '<p class="muted">清空字段即可恢复继承。</p>' + fields.join("") : ""}`, `<button class="delete" data-group="group_profiles" data-delete="${esc(gid)}">移除</button>`);
+    fields.push(
+      `<label class="field">本群每日限额（元）<input type="number" step="any" min="0" ${scoped("", "daily_cost_cny")} value="${esc(profile.daily_cost_cny)}" placeholder="仅使用全局预算"></label>`,
+    );
+    html += panel(
+      `群 ${esc(gid)}`,
+      `<label><input type="checkbox" ${scoped("", "enabled")} ${enabled ? "checked" : ""}> 启用个性化</label>${enabled ? '<p class="muted">清空字段即可恢复继承。</p>' + fields.join("") : ""}`,
+      `<button class="delete" data-group="group_profiles" data-delete="${esc(gid)}">移除</button>`,
+    );
   }
   return html;
 }
@@ -586,23 +744,31 @@ function bindProfiles() {
   $("#add-profile").onsubmit = (e) => {
     e.preventDefault();
     const id = $("#profile-id").value.trim();
-    if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || id in (cfg.data.group_profiles || {})) return toast("请输入未添加的群号");
-    (cfg.data.group_profiles ??= {})[id] = {enabled: false};
+    if (
+      !/^[A-Za-z0-9_-]{1,64}$/.test(id) ||
+      id in (cfg.data.group_profiles || {})
+    )
+      return toast("请输入未添加的群号");
+    (cfg.data.group_profiles ??= {})[id] = { enabled: false };
     changed();
     renderEditor();
   };
-  document.querySelectorAll("[data-profile]").forEach(el => el.onchange = () => {
-    const {profile: gid, section, key} = el.dataset;
-    const profile = cfg.data.group_profiles[gid];
-    const target = section ? (profile[section] ??= {}) : profile;
-    if (el.type === "checkbox") target[key] = el.checked;
-    else if (!el.value.trim()) delete target[key];
-    else if (el.type === "number") target[key] = Number(el.value);
-    else target[key] = el.value;
-    changed();
-    if (key === "enabled") renderEditor();
-    else if (section === "prompts") el.parentNode.firstChild.textContent = `${labels[key] || key} · ${target[key] ? "本群覆盖" : "继承全局"}`;
-  });
+  document.querySelectorAll("[data-profile]").forEach(
+    (el) =>
+      (el.onchange = () => {
+        const { profile: gid, section, key } = el.dataset;
+        const profile = cfg.data.group_profiles[gid];
+        const target = section ? (profile[section] ??= {}) : profile;
+        if (el.type === "checkbox") target[key] = el.checked;
+        else if (!el.value.trim()) delete target[key];
+        else if (el.type === "number") target[key] = Number(el.value);
+        else target[key] = el.value;
+        changed();
+        if (key === "enabled") renderEditor();
+        else if (section === "prompts")
+          el.parentNode.firstChild.textContent = `${labels[key] || key} · ${target[key] ? "本群覆盖" : "继承全局"}`;
+      }),
+  );
 }
 function renderEditor() {
   let html = "";
@@ -944,7 +1110,7 @@ async function refresh() {
   status = await api("status");
   updateBadge();
   if (
-    ["overview", "usage", "requests"].includes(page) &&
+    ["overview", "requests"].includes(page) &&
     !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)
   )
     await render();

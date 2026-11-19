@@ -128,8 +128,11 @@ class EventIntake:
             return IntakeResult("ignored_collection_off", message)
         received_at = self.clock()
         if candidate:
+            sender = event.get("sender")
+            names = (sender.get("card"), sender.get("nickname")) if isinstance(sender, dict) else ()
+            name = next((v.strip() for v in names if isinstance(v, str) and v.strip()), "")
             seq, fresh, requested = self.store.ingest_request(
-                message, parsed.platform_time, received_at
+                message, parsed.platform_time, received_at, member_name=name
             )
         else:
             seq, fresh = self.store.ingest(message, parsed.platform_time, received_at)

@@ -8,7 +8,7 @@ from uuid import uuid4
 from .contracts import Message
 
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 # Where a stored message came from: a pushed event ("live"), a get_msg lookup for a
 # referenced message that was missing locally ("backfill"; never a reply trigger), or the
 # read-only sync of the bot account's own messages from SnowLuma's message store
@@ -125,6 +125,16 @@ CREATE TABLE IF NOT EXISTS usage_ledger (
     requests INTEGER NOT NULL DEFAULT 0, cost_cny REAL NOT NULL DEFAULT 0, latency_s REAL,
     channel TEXT, service TEXT, list_cost REAL, list_currency TEXT, google_queries INTEGER
 );
+CREATE TABLE IF NOT EXISTS group_names (
+    bot_id TEXT NOT NULL, group_id TEXT NOT NULL, name TEXT NOT NULL, updated_at REAL NOT NULL,
+    PRIMARY KEY(bot_id, group_id)
+);
+CREATE TABLE IF NOT EXISTS request_members (
+    seq INTEGER PRIMARY KEY REFERENCES messages(seq) ON DELETE CASCADE, name TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS usage_run ON usage_ledger(run_id);
+CREATE INDEX IF NOT EXISTS usage_time ON usage_ledger(created_at);
+CREATE INDEX IF NOT EXISTS runs_time ON runs(created_at);
 CREATE INDEX IF NOT EXISTS usage_group_day ON usage_ledger(group_id,day);
 CREATE INDEX IF NOT EXISTS runs_group_time ON runs(group_id,created_at);
 CREATE INDEX IF NOT EXISTS usage_ledger_day ON usage_ledger(day);
@@ -210,6 +220,7 @@ MIGRATIONS = {
     8: "",
     9: "",
     10: "",
+    11: "",
     SCHEMA_VERSION: "",
 }
 # v9 -> v10 (owner remote control): new tables `control_state` / `control_events` (SCHEMA);
@@ -411,6 +422,8 @@ class Store:
         message: Message,
         platform_time: int | None = None,
         received_at: float | None = None,
+        *,
+        member_name: str = "",
     ) -> tuple[int, bool, bool]:
         """Store a live reply candidate and its reply request in one transaction (RUN-01).
 
@@ -426,6 +439,10 @@ class Store:
             seq, fresh = self._insert_message(message, platform_time, received_at, "live")
             if not fresh:
                 return seq, False, False
+            if member_name:
+                self.con.execute(
+                    "INSERT INTO request_members VALUES (?,?)", (seq, member_name[:128])
+                )
             cursor = self.con.execute(
                 "INSERT OR IGNORE INTO reply_requests"
                 "(bot_id,group_id,message_id,seq,user_id,platform_time,received_at)"

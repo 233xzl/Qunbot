@@ -9,13 +9,14 @@ import time
 from urllib.parse import urlsplit
 from uuid import uuid4
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..config import ConfigError
 from ..config_service import ConfigService, load_bundle, materialize, schema
 from ..runtime import RuntimeController, application_plan
+from . import monitor
 from .auth import Auth
 
 COOKIE = "qunbot_session"
@@ -235,89 +236,57 @@ def create_app(instance, *, demo=False, allowed_hosts=None, controller_options=N
         finally:
             con.close()
 
-    def usage_rows(con):
-        # A stopped instance may still be on v10 until the next engine start.
-        if any(r[1] == "group_id" for r in con.execute("PRAGMA table_info(usage_ledger)")):
-            return "usage_ledger"
-        return "(SELECT u.*,r.group_id FROM usage_ledger u LEFT JOIN runs r USING(run_id))"
-
     @app.get("/api/groups")
-    async def groups():
+    def groups(named: bool = False):
         with database() as con:
             if con is None:
                 return []
-            rows = con.execute(
-                f"SELECT group_id FROM runs UNION SELECT group_id FROM {usage_rows(con)} ORDER BY 1"
-            )
-            return [r[0] for r in rows if r[0] is not None]
+            ids = [
+                r[0]
+                for r in con.execute(
+                    f"SELECT group_id FROM runs UNION SELECT group_id FROM {monitor.ledger(con)} ORDER BY 1"
+                )
+                if r[0] is not None
+            ]
+            if not named:
+                return ids
+            directory = monitor.names(con, controller.settings.bot_id)
+            return [dict(id=g, name=monitor.group_title(g, directory)) for g in ids]
 
     @app.get("/api/requests")
-    async def requests(offset: int = 0, state: str = "", group_id: str | None = None):
+    def requests(
+        offset: int = Query(0, ge=0),
+        limit: int = Query(50, ge=1, le=51),
+        state: str = "",
+        group_id: str | None = None,
+        period: monitor.Period | None = None,
+    ):
         with database() as con:
-            if con is None:
-                return []
-            return [
-                dict(r)
-                for r in con.execute(
-                    "SELECT run_id,group_id,state,route,created_at,started_at,ended_at,error_kind FROM runs "
-                    "WHERE (?='' OR state=?) AND (? IS NULL OR group_id=?) ORDER BY created_at DESC LIMIT 50 OFFSET ?",
-                    (state, state, group_id, group_id, max(0, offset)),
-                )
-            ]
+            return monitor.requests(
+                con,
+                offset=offset,
+                limit=limit,
+                state=state,
+                gid=group_id,
+                bounds=monitor.window(period, time.time()) if period else None,
+            )
 
     @app.get("/api/requests/{run_id}")
-    async def request_detail(run_id: str):
+    def request_detail(run_id: str):
         with database() as con:
-            row = (
-                con.execute("SELECT * FROM runs WHERE run_id=?", (run_id,)).fetchone()
-                if con
-                else None
-            )
-            if row is None:
-                return JSONResponse({"error": "请求不存在"}, status_code=404)
-            result = dict(row)
-            result["usage"] = [
-                dict(r) for r in con.execute("SELECT * FROM usage_ledger WHERE run_id=?", (run_id,))
-            ]
-            return result
+            rows = monitor.requests(con, run_id=run_id)
+            return rows[0] if rows else JSONResponse({"error": "请求不存在"}, status_code=404)
 
     @app.get("/api/usage")
-    async def usage(group_id: str | None = None):
+    def usage(
+        group_id: str | None = None,
+        period: monitor.Period = "30d",
+        dimension: monitor.Dimension = "total",
+    ):
         with database() as con:
-            if con is None:
-                return {"days": [], "providers": [], "requests": 0, "tokens": 0, "cost": 0}
-            since = time.time() - 30 * 86400
-            table = usage_rows(con)
-            where = "WHERE created_at>=?"
-            params = [since]
-            if group_id is not None:
-                where += " AND group_id=?" if group_id else " AND group_id IS NULL"
-                if group_id:
-                    params.append(group_id)
-            totals = dict(
-                con.execute(
-                    f"SELECT COALESCE(SUM(cost_cny),0) cost, COALESCE(SUM(input_tokens+output_tokens),0) tokens FROM {table} {where}",
-                    params,
-                ).fetchone()
+            return monitor.usage(
+                con, controller.settings.bot_id, period, dimension, group_id, time.time()
             )
-            totals["requests"] = con.execute(
-                f"SELECT COUNT(*) FROM runs {where}", params
-            ).fetchone()[0]
-            totals["days"] = [
-                dict(r)
-                for r in con.execute(
-                    f"SELECT day,SUM(cost_cny) cost FROM {table} {where} GROUP BY day ORDER BY day",
-                    params,
-                )
-            ]
-            totals["providers"] = [
-                dict(r)
-                for r in con.execute(
-                    f"SELECT provider,model,SUM(cost_cny) cost,SUM(input_tokens+output_tokens) tokens,COUNT(*) calls FROM {table} {where} GROUP BY provider,model",
-                    params,
-                )
-            ]
-            return totals
 
     def storage_paths():
         s = controller.settings
@@ -377,6 +346,7 @@ def create_app(instance, *, demo=False, allowed_hosts=None, controller_options=N
             "self_id": s.bot_id,
             "group_id": group,
             "user_id": "DEMO_USER",
+            "sender": {"nickname": "模拟成员"},
             "message_id": uuid4().hex,
             "time": int(time.time()),
             "message": [
