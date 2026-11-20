@@ -1,6 +1,6 @@
 [project]
 name = "qunbot"
-version = "0.1.0"
+version = "0.2.0"
 description = "QQ group chat bot backend with per-group configuration and a local admin UI"
 readme = "README.md"
 license = "Apache-2.0"
@@ -48,6 +48,6 @@ include = [
     "/tests/unit/*.py", "/tests/replay/cases/*.json", "/tests/replay/schema.json",
     "/tests/replay/route_exclusions.json", "/config/settings.example.toml",
     "/config/prompts.example/persona.md", "/config/credentials.example.txt",
-    "/docs/ADMIN-UI.md", "/docs/CONFIGURATION.md", "/docs/SYNTHETIC-CASES.md", "/README.md",
+    "/docs/ADMIN-UI.md", "/docs/CONFIGURATION.md", "/docs/SYNTHETIC-CASES.md", "/README.md", "/CHANGELOG.md",
     "/qunbot.cmd", "/LICENSE", "/ACKNOWLEDGEMENTS.md", "/uv.lock", "/pyproject.toml", "/.gitignore", "/.gitattributes",
 ]

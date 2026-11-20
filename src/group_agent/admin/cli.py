@@ -36,21 +36,37 @@ def initialize(instance, source=None):
             }
             for name in sorted(names)
         }
-        prompts = {"persona": "你是一个群聊助手。用自然、简洁的中文回答，依据当前材料说明事实。"}
+        prompts = {}  # Inherit the author persona and its matching reply contract.
     draft = service.save_editor(data, prompts)
     service.publish(draft.path, None)
     return reset_key(instance)
 
 
+def deploy(args):
+    from ..runtime import exclusive_lock
+    from .background import manage
+
+    instance = args.instance.resolve()
+    with exclusive_lock(instance / "private" / "deploy.lock", "该实例正在部署"):
+        configured = bool(ConfigService(instance / "config-history").status()["revision"])
+        has_key = (instance / "private" / "admin.json").is_file()
+        if configured != has_key:
+            raise ConfigError("实例配置或管理密钥缺失，请检查实例目录后重试")
+        if not configured:
+            print("管理密钥（仅本次显示，请保存）：" + initialize(instance), flush=True)
+        args.command = "start"
+        return manage(args)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Qunbot 本地管理台")
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("init", "reset-key", "serve", "start", "restart", "stop", "status"):
+    for name in ("init", "reset-key", "serve", "deploy", "start", "restart", "stop", "status"):
         cmd = sub.add_parser(name)
         cmd.add_argument("--instance", type=Path, required=True)
         if name == "init":
             cmd.add_argument("--settings", type=Path, help="导入已有配置，保留其数据路径")
-        if name in {"serve", "start"}:
+        if name in {"serve", "deploy", "start"}:
             cmd.add_argument("--host", choices=("127.0.0.1", "localhost", "::1"), default=None)
             cmd.add_argument("--port", type=int)
             cmd.add_argument(
@@ -64,6 +80,8 @@ def main(argv=None):
         if args.command == "init":
             key = initialize(args.instance, args.settings)
             print("管理密钥（仅本次显示，请保存）：" + key)
+        elif args.command == "deploy":
+            print(deploy(args))
         elif args.command == "reset-key":
             print("新管理密钥（旧会话失效）：" + reset_key(args.instance))
         elif args.command in {"start", "restart", "stop", "status"}:

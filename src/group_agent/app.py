@@ -291,7 +291,10 @@ def main(argv=None) -> int:
         from .config_cli import main as config_main
 
         return config_main(argv[1:])
+    from . import __version__
+
     parser = argparse.ArgumentParser(description="Qunbot QQ group chat backend")
+    parser.add_argument("--version", action="version", version=f"Qunbot {__version__}")
     parser.add_argument("--settings", type=Path, default=Path("config/settings.example.toml"))
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument(

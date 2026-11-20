@@ -510,6 +510,7 @@ async def _run_serve(
         limits=settings.limits,
         knowledge=knowledge,
         media_root=media_root,
+        forward_fetch=None if offline else api.get_forward_msg,
         backfill=backfill,
         media=media,
         self_sync=holder["sync"],

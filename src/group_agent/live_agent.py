@@ -374,7 +374,7 @@ def _readable(ev: dict) -> bool:
     """The message has content the model can read: text, an available image or a card."""
     for seg in _segments(ev):
         kind, data = seg.get("type"), seg.get("data") or {}
-        if kind == "text" and str(data.get("text", "")).strip():
+        if kind in {"text", "forward_text"} and str(data.get("text", "")).strip():
             return True
         if _available_image(seg) or (kind == "json" and parse_card(seg) is not None):
             return True
@@ -421,7 +421,7 @@ def render_material(
     max_images: int = 4,
     gaps: list[str] | None = None,
     reasons: dict[str, str] | None = None,
-) -> tuple[str, list[tuple[str, Path]], dict, dict[str, str]]:
+) -> tuple[str, list[tuple[str, Path | bytes]], dict, dict[str, str]]:
     """Render prior messages (in order) and the anchor as prompt material.
 
     Returns the text, the image files to attach (tag, path) in priority order, stats,
@@ -457,7 +457,7 @@ def render_material(
     order = [anchor] + [e for e in events if str(e.get("message_id")) == quoted]
     order += [e for e in reversed(events) if str(e.get("message_id")) != quoted]
     image_slots: dict[tuple[str, int], str] = {}
-    attach: list[tuple[str, Path]] = []
+    attach: list[tuple[str, Path | bytes]] = []
     roles: dict[str, str] = {}
     asker = str(anchor.get("user_id"))
     total = unavailable = 0
@@ -489,7 +489,10 @@ def render_material(
             diagnostic = {"role": role, "segment": k, "status": "attached", "reason": None}
             diagnostic.update({k: ref[k] for k in ("attempts", "elapsed_ms") if k in ref})
             image_statuses.append(diagnostic)
-            if ref.get("status") != "available" or not ref.get("path") or not path.exists():
+            content = ref.get("content")
+            if ref.get("status") != "available" or (
+                not isinstance(content, bytes) and (not ref.get("path") or not path.exists())
+            ):
                 diagnostic.update(
                     status="unavailable",
                     reason=ref.get("reason")
@@ -503,7 +506,7 @@ def render_material(
                 unavailable += 1
             elif len(attach) < max_images:
                 tag = f"图片{len(attach) + 1}"
-                attach.append((tag, path))
+                attach.append((tag, content if isinstance(content, bytes) else path))
                 diagnostic["image"] = tag
                 roles[tag] = f"{tag}（{role}）"
                 image_slots[(mid, k)] = f"[{tag}，已附上]"
@@ -529,7 +532,11 @@ def render_material(
         out = []
         for k, seg in enumerate(_segments(ev)):
             kind, data = seg.get("type"), seg.get("data") or {}
-            if kind == "text":
+            if kind in {"forward", "forward_gap"}:
+                out.append("[转发部分内容未取得]")
+            elif kind == "forward_speaker":
+                out.append("\n  转发 · " + member(data.get("text"), single_line=True) + "：")
+            elif kind in {"text", "forward_text"}:
                 out.append(member(data.get("text", ""), continuation=MESSAGE_CONTINUATION))
             elif kind == "at":
                 qq = str(data.get("qq") or "")
@@ -644,12 +651,12 @@ def load_image(path: Path, max_side: int) -> ImagePart:
     return _load_image(path, max_side)[0]
 
 
-def _load_image(path: Path, max_side: int) -> tuple[ImagePart, bool]:
+def _load_image(path: Path | bytes, max_side: int) -> tuple[ImagePart, bool]:
     """First frame, RGB, longest side <= max_side, JPEG (GIF/BMP are not accepted by all
     providers; size bounds image tokens)."""
     from PIL import Image
 
-    with Image.open(path) as img:
+    with Image.open(io.BytesIO(path) if isinstance(path, bytes) else path) as img:
         animated = getattr(img, "is_animated", False)
         img.seek(0)
         frame = img.convert("RGB")

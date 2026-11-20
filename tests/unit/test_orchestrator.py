@@ -865,3 +865,52 @@ async def test_stop_one_group_during_billed_requests():
     h.store.con.execute("UPDATE received_groups SET enabled=1 WHERE group_id='A'")
     assert h.orch.submit(pending) == "paused"
     h.store.close()
+
+
+@pytest.mark.parametrize("source", ["anchor", "quote", "previous"])
+async def test_forward_nodes_reach_answer_material(tmp_path, source):
+    from group_agent.live_agent import LiveAgent
+    from test_live_replay import live_config
+
+    h = Harness()
+    live = LiveAgent(h.orch, live_config(tmp_path, lambda: None, lambda: None))
+    calls, materials = [], []
+
+    async def fetch(key):
+        calls.append(key)
+        return [
+            {
+                "sender": {"nickname": "访客"},
+                "message": [
+                    {"type": "text", "data": {"text": "只有转发里有的原话"}},
+                    {"type": "forward", "data": {"id": key}},
+                ],
+            }
+        ]
+
+    async def answer(trace, *_):
+        materials.append(await live._material(trace, live._state(trace)))
+        return "回答"
+
+    h.orch.forward_fetch = fetch
+    h.agent.answer = answer
+    stamp = int(wall())
+    first = ev("record", at=source == "anchor", text="", t=stamp)
+    first["message"].append({"type": "forward", "data": {"id": "resource"}})
+    h.feed(first)
+    if source != "anchor":
+        h.feed(
+            ev(
+                "ask",
+                text="看看我刚发的内容",
+                t=stamp,
+                reply="record" if source == "quote" else None,
+            )
+        )
+    await h.settle()
+    assert calls == ["resource"]
+    assert "只有转发里有的原话" in materials[0].text
+    assert "转发部分内容未取得" in materials[0].text
+    detail = json.loads(next(iter(h.runs().values()))["detail"])
+    assert detail["forward"]["nodes_used"] == 1
+    assert detail["forward"]["gaps"] == {"repeat_or_depth_limit": 1}

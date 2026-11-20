@@ -4,11 +4,10 @@ import socket
 
 import httpx
 
-from group_agent.admin.cli import initialize, main
+from group_agent.admin.cli import main
 
 
-def test_background_restart_restores_engine_and_preserves_instance(tmp_path):
-    key = initialize(tmp_path)
+def test_background_restart_restores_engine_and_preserves_instance(tmp_path, capsys):
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
@@ -26,7 +25,10 @@ def test_background_restart_restores_engine_and_preserves_instance(tmp_path):
             assert status["demo"] and status["state"] == state
 
         try:
-            command("start", "--demo", "--port", str(port))
+            command("deploy", "--demo", "--port", str(port))
+            key = capsys.readouterr().out.splitlines()[0].split("：", 1)[1]
+            command("deploy")
+            assert "管理密钥" not in capsys.readouterr().out
             check("stopped")
             command("start")
             client.post("/api/runtime/start", json={}).raise_for_status()

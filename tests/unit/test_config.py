@@ -43,7 +43,8 @@ def test_breaker_and_reaction_settings(tmp_path):
     """D-20: [models] breaker scalars sit beside the model tables; [serve] reaction."""
     default = load_settings(Path("config/settings.example.toml"))
     assert (default.model_breaker_failures, default.model_breaker_cooldown_s) == (2, 300.0)
-    assert default.processing_reaction is False and default.reaction_emoji_id == "424"
+    assert default.processing_reaction is True and default.reaction_emoji_id == "424"
+    assert default.daily_cost_cny == 20 and default.runtime.degrade_ratio == 0.9
     path = tmp_path / "settings.toml"
     path.write_text(
         "[models]\nbreaker_failures = 3\nbreaker_cooldown_s = 60\n"

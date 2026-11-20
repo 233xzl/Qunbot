@@ -16,29 +16,32 @@ blocked_groups = []
 [budgets]
 deadline_seconds = 120
 context_messages = 80                    # explicit reply-chain baseline, not a token budget
-daily_cost_cny = 3.0                     # D-04: 80 % degrade, 100 % owner only (--serve)
+daily_cost_cny = 20.0                     # D-04: 90 % degrade, 100 % owner only (--serve)
+
+[billing]
+usd_cny = 6.7
+usd_cny_date = "2026-11-14"
 
 [serve]
 db_path = "data/serve/serve.sqlite3"  # --serve store, relative to instance_root
-# D-19: the owner's `#新版` command may send its answer (the only send path). Default off;
+# D-19: the owner's `#新版` command may send its answer (the only send path). Enabled in the author preset;
 # `--allow-owner-send` also turns it on for one process.
-owner_command_send = false
+owner_command_send = true
 # D-21: fixed reply when every answer attempt fails (recorded like an answer, run marked
 # fallback_reply; clarify/teaching unaffected). "" = no reply. Default: the old bot's wording.
 # fallback_reply = "这个史暂时没解析成功，稍后再 @ 我试试。"
 # Read-only sync of the bot account's own messages (the old bot's replies; SnowLuma does
 # not push them) from SnowLuma's message store into this store, every self_sync_interval_s
 # seconds (self_sync.py). Never a reply trigger; unreadable store = one warning, serve goes on.
-self_sync = false
+self_sync = false # enable after setting this installation's snowluma_db
 self_sync_interval_s = 5
 # snowluma_db = "../SnowLuma/data/<bot_id>/messages.db"  # required with self_sync=true
 # D-20: "processing" emoji on each admitted request (reaction.py). Off in the shadow trial
 # (AstrBot reacts); turn on at the cutover. `--reaction` / `--no-reaction` override it.
-processing_reaction = false
+processing_reaction = true
 reaction_emoji_id = "424"
-# Cutover: send every answer (live_send.py; reply + text, rate-limited, re-checked). Off by
-# default; when on, the #新版 command does not send. `--live-send` / `--no-live-send`.
-live_send = false
+# Cutover: send every answer (live_send.py; reply + text, rate-limited, re-checked). Enabled in the author preset; when on, the #新版 command does not send. `--live-send` / `--no-live-send`.
+live_send = true
 # Owner remote control (owner_control.py): the owner sends #暂停 / #恢复 / #状态 (exact text, in
 # any group, with or without @bot) to pause or resume replies; the pause survives restarts.
 owner_control = true
@@ -236,5 +239,5 @@ web_searches = 3
 web_reads = 5
 tool_timeout_seconds = 25
 finish_reserve_seconds = 30
-degrade_ratio = 0.8
+degrade_ratio = 0.9
 cap_ratio = 1.0

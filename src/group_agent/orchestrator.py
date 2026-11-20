@@ -185,6 +185,7 @@ class Orchestrator(RunFlow):
         ancestry_max: int = 300,
         prepare_wait_seconds: float = 8.0,
         quote_context_seconds: float = 120.0,
+        forward_fetch=None,
         backfill: Any = None,
         self_sync: Any = None,
         publisher: Callable[[str], Awaitable[Any]] | None = None,
@@ -219,6 +220,7 @@ class Orchestrator(RunFlow):
         self.ancestry_depth, self.ancestry_max = ancestry_depth, ancestry_max
         self.prepare_wait_seconds = prepare_wait_seconds
         self.quote_context_seconds = quote_context_seconds
+        self.forward_fetch = forward_fetch
         self.backfill = backfill
         # Read-only bot-message sync (self_sync.SelfSync): `catch_up` before the context.
         self.self_sync = self_sync
@@ -558,6 +560,7 @@ class Orchestrator(RunFlow):
             "intended_route": trace.intended_route,
             "clarify": trace.clarify,
             "material_gaps": trace.material_gaps,
+            **({"forward": trace.forward_summary} if hasattr(trace, "forward_summary") else {}),
             "degraded": trace.degraded,
             "images": len(trace.images),
             "cards": len(trace.cards),
@@ -763,6 +766,35 @@ class Orchestrator(RunFlow):
             (m.group_id, m.message_id),
             {"message_id": m.message_id, "user_id": m.user_id, "message": []},
         )
+        if self.forward_fetch:
+            from .forward_material import ForwardMaterial
+
+            forward = ForwardMaterial(
+                self.forward_fetch,
+                getattr(self.media, "forward_image", None),
+                self.now()
+                + min(10, max(0, self.remaining(trace) - self.limits.finish_reserve_seconds)),
+                self.access.snapshot.blocked_users,
+                getattr(getattr(self.agent, "config", None), "max_images", 4),
+            )
+            for (_, mid), event in events.items():
+                reason = trace.context_reasons.get(mid, "")
+                relevant = mid in (m.message_id, *m.reply_ids) or (
+                    event.get("user_id") == m.user_id
+                    and reason
+                    and not reason.startswith("recent_chat/")
+                )
+                if relevant and any(s.get("type") == "forward" for s in event["message"]):
+                    await forward.expand(event)
+            if forward.seen or forward.gaps:
+                trace.forward_summary = {**forward.stats, "gaps": dict(forward.gaps)}
+                trace.material_gaps.extend(f"forward_{reason}" for reason in forward.gaps)
+                visible = {r["message_id"] for r in rows()}
+                events = {key: ev for key, ev in events.items() if key[1] in visible}
+                events.setdefault(
+                    (m.group_id, m.message_id),
+                    {"message_id": m.message_id, "user_id": m.user_id, "message": []},
+                )
         trace._material_events = events
         if self.store.pending_media(r["seq"] for r in rows()):
             self.counts["prepare_timeouts"] += 1

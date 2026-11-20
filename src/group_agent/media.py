@@ -536,6 +536,17 @@ class MediaCollector:
             # A shared download may still be linking another live slot. The final
             # slot completion performs GC after all consumers have attached.
 
+    async def forward_image(self, data: dict) -> bytes:
+        if (_int(data.get("file_size")) or 0) > self.max_bytes:
+            raise MediaUnavailable("oversize")
+        key = data.get("file") if isinstance(data.get("file"), str) else None
+        async with self._semaphore:
+            await self._bucket.acquire()
+            content = await self._acquire(data, key, {"reason": None, "url": None})
+        if len(content) > self.max_bytes or sniff_image(content) is None:
+            raise MediaUnavailable("invalid_image")
+        return content
+
     async def _acquire(self, data: dict, key: str | None, cycle: dict) -> bytes:
         sources: list[tuple[str, str]] = []
         if self.api is not None and key:
