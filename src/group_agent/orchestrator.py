@@ -43,7 +43,14 @@ from .admission import AccessPolicy, ReplyRequest
 from .config import Settings
 from .contracts import Message
 from .outbox import OutboundRecord, fit_message_text
-from .policy import COST_REJECTED, RuntimeLimits, ToolBudget, is_expired
+from .policy import (
+    COST_REJECTED,
+    GROUP_RATE_NOTICE_TEXT,
+    RuntimeLimits,
+    ToolBudget,
+    is_expired,
+)
+from .session import SessionManager
 from .knowledge_base import KnowledgeBase
 from .runflow import CURRENT_RUN, RunFlow, RunTrace
 from .store import Store, _message
@@ -119,6 +126,8 @@ def _compact_record(record: dict) -> dict:
         "knowledge_mode",  # candidates vs selected, no entry contents
         "breaker",  # D-20: Gemini breaker state at decision/answer (closed/open/half_open)
         "breaker_skips",
+        "session",  # session id, turn, start reason, answered/committed, tokens
+        "session_material",  # counts only
     ):
         if key in record:
             keep[key] = record[key]
@@ -231,6 +240,10 @@ class Orchestrator(RunFlow):
         # outbound row (the caller, owner_command.NewVersionCommand, publishes it).
         self._captures: dict[str, asyncio.Future] = {}
         self._settings_cache: tuple[int, Settings] | None = None
+        # Per-group answer sessions (`session.py`) and the last admission-limit notice
+        # per group (one per window).
+        self.sessions = SessionManager()
+        self._admit_notices: dict[str, float] = {}
         self.interrupted = store.interrupt_active_runs(clock())
         self.agent = agent_factory(self)
 
@@ -349,9 +362,11 @@ class Orchestrator(RunFlow):
             self.counts["paused_skipped"] += 1
             self.store.set_request_state(*request.key, "recorded")
             return "paused"
-        mode, scope = self.usage.decision(request.is_owner, m.group_id)
         run_id = uuid4().hex
         now = self.clock()
+        if not request.is_owner and self._admit_limited(m, now):
+            return self._reject_rate_limited(run_id, request, now)
+        mode, scope = self.usage.decision(request.is_owner, m.group_id)
         if mode == COST_REJECTED:  # D-12: no run, no notice for non-owners
             if self.store.create_run(
                 run_id,
@@ -399,6 +414,51 @@ class Orchestrator(RunFlow):
         task = self.launch(trace, m, request.seq, event)
         task.add_done_callback(lambda t, tr=trace: self._finish(tr, t))
         return "started"
+
+    def _admit_limited(self, m: Message, now: float) -> bool:
+        """Per-group admission rate (`runtime.group_admit_max` per
+        `group_admit_window_minutes`, group overrides apply); counted from the stored
+        runs, so a restart keeps the window."""
+        limits = self._base_settings.runtime_for_group(m.group_id, self._limits)
+        if limits.group_admit_max <= 0:
+            return False
+        since = now - limits.group_admit_window_minutes * 60
+        return self.store.admitted_runs(m.bot_id, m.group_id, since) >= limits.group_admit_max
+
+    def _reject_rate_limited(self, run_id: str, request: ReplyRequest, now: float) -> str:
+        m = request.message
+        if not self.store.create_run(
+            run_id, request.seq, m, state="rejected", cost_mode="normal", now=now,
+            error_kind="group_rate_limited",
+        ):  # fmt: skip
+            self.counts["duplicate"] += 1
+            return "duplicate"
+        self.store.update_run(
+            run_id, now, detail=json.dumps({"config_revision": self.settings.revision})
+        )
+        self.counts["rejected_group_rate"] += 1
+        limits = self._base_settings.runtime_for_group(m.group_id, self._limits)
+        window = limits.group_admit_window_minutes * 60
+        last = self._admit_notices.get(m.group_id)
+        if last is None or now - last >= window:
+            self._admit_notices[m.group_id] = now
+            trace = OnlineTrace(run_id, m.message_id, m.group_id, m.user_id, self.now(), "normal", True)
+            trace.end(self.now(), "rejected_busy", "group_rate_limited")
+            task = asyncio.create_task(
+                self._publish(trace, m, GROUP_RATE_NOTICE_TEXT, "busy_notice", None)
+            )
+            self.tasks.append(task)
+            task.add_done_callback(self._notice_done)
+        return "rate_limited"
+
+    def _notice_done(self, task: asyncio.Task) -> None:
+        try:
+            self.tasks.remove(task)
+        except ValueError:
+            pass
+        if not task.cancelled() and task.exception() is not None:
+            self.counts["notice_errors"] += 1
+            self.log(f"group rate notice failed: {type(task.exception()).__name__}")
 
     async def generate_for(
         self, question: Message, question_seq: int, *, run_seq: int
@@ -551,6 +611,9 @@ class Orchestrator(RunFlow):
         if isinstance(runs, dict):
             state = runs.pop(trace.run_id, None)
             record = getattr(state, "record", None) or {}
+            view = getattr(state, "session", None)
+            if view is not None and record.get("session") is not None:
+                record["session"]["committed"] = self._commit_session(trace, view)
         detail = {
             "config_revision": revision,
             "group_overrides": getattr(trace, "profile_fields", []),
@@ -584,6 +647,56 @@ class Orchestrator(RunFlow):
         except Exception as exc:
             self.counts["persist_errors"] += 1
             self.log(f"run detail write failed: {type(exc).__name__}")
+
+    # -- group sessions (`session.py`) ------------------------------------------------
+    def session_spec(self, trace: RunTrace):
+        """The session settings of the run's group; None for the owner's `#新版`."""
+        if trace.run_id in self._captures:
+            return None
+        return self._base_settings.session_for_group(trace.group_id)
+
+    def session_valid(self, session) -> bool:
+        """A session stays usable while none of its messages was recalled or removed and
+        none of its authors is blocked now."""
+        snap = self.access.snapshot
+        if session.users & snap.blocked_users:
+            return False
+        return not self.store.revoked_among(snap.bot_id, session.group_id, session.known)
+
+    def session_events(self, trace: RunTrace, m: Message, seq: int, since, limit: int) -> list:
+        """Group messages since the previous session turn (production time >= `since`),
+        the most recent `limit`, visible to this run; other runs' pending requests and
+        blocked authors are left out."""
+        if limit <= 0 or since is None:
+            return []
+        pending = {
+            other.message_id
+            for run_id, (_, other) in self.active.items()
+            if run_id != trace.run_id and other.group_id == m.group_id
+        }
+        blocked = self.access.snapshot.blocked_users
+        out = []
+        for row in self.store.history_window(m, seq, since, limit):
+            if row["message_id"] in pending or row["user_id"] in blocked:
+                continue
+            if is_expired(row["platform_time"], self.platform_now(), self.limits):
+                continue
+            out.append(self._event(row))
+        return out
+
+    def _commit_session(self, trace: RunTrace, view) -> bool:
+        """Join a session answer once it reached the group (sent, or recorded in
+        record-only mode); anything else never becomes part of the conversation."""
+        if trace.state != "succeeded" or trace.route == "nudge_merged":
+            return False
+        row = self.store.outbound(trace.run_id)
+        if row is None or row.get("kind") != "answer":
+            return False
+        if row.get("state") not in ("sent", "recorded_not_sent"):
+            return False
+        return self.sessions.commit(
+            self.settings.bot_id, view, self.clock(), row.get("qq_message_id")
+        )
 
     # -- context ---------------------------------------------------------------------
     def _event(self, row) -> dict:

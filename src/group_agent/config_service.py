@@ -22,11 +22,13 @@ from .config import (
     ConfigError,
     ModelSpec,
     Retention,
+    SessionSpec,
     Settings,
     WebSpec,
     MODELS_SCALARS,
-    GROUP_TOOL_LIMITS,
+    GROUP_RUNTIME_KEYS,
     _whole,
+    parse_session,
     parse_settings,
 )
 from .policy import RuntimeLimits
@@ -78,10 +80,14 @@ GROUPS = {
     "collection": set(Collection.__dataclass_fields__),
     "billing": set(BillingSpec.__dataclass_fields__),
     "web": set(WebSpec.__dataclass_fields__),
+    "session": set(SessionSpec.__dataclass_fields__),
     "runtime": set(RuntimeLimits.__dataclass_fields__)
     - {"deadline_seconds", "context_messages", "moderation_threshold", "retention_days"},
     "model_roles": {"answer", "decision", "fallback"},
     "prompts": {"persona", "evidence", "reply_contract", "decision", "tool_decision", "search"},
+}
+LATE_RUNTIME_DEFAULTS = {
+    key: getattr(RuntimeLimits(), key) for key in ("group_admit_window_minutes", "group_admit_max")
 }
 CONNECTION_KEYS = {
     "protocol",
@@ -165,11 +171,18 @@ def validate_keys(data):
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", gid):
             raise ConfigError("group_profiles: invalid group id")
         path = f"group_profiles.{gid}"
-        _keys(profile, {"enabled", "prompts", "model_roles", "daily_cost_cny", "runtime"}, path)
+        _keys(
+            profile,
+            {"enabled", "prompts", "model_roles", "daily_cost_cny", "runtime", "session"},
+            path,
+        )
         runtime = profile.get("runtime", {})
-        _keys(runtime, GROUP_TOOL_LIMITS, f"{path}.runtime")
+        _keys(runtime, GROUP_RUNTIME_KEYS, f"{path}.runtime")
         for key in runtime:
             _whole(runtime, key, 0, f"{path}.runtime", minimum=0)
+        if runtime.get("group_admit_window_minutes") == 0:
+            raise ConfigError(f"{path}.runtime.group_admit_window_minutes: expected at least 1")
+        parse_session(profile.get("session", {}), f"{path}.session", SessionSpec())
         if type(profile.get("enabled", False)) is not bool:
             raise ConfigError(f"{path}.enabled: expected a boolean")
         cap = profile.get("daily_cost_cny", 1)
@@ -377,6 +390,12 @@ def build_bundle(data: dict, path: Path, overrides=None) -> ConfigBundle:
     effective_data = plain(settings)
     if not settings.group_profiles:
         effective_data.pop("group_profiles")  # preserve pre-profile published digests
+    # Fields added after 0.2.0 leave the digest of revisions that keep their defaults alone.
+    if effective_data["session"] == plain(SessionSpec()):
+        effective_data.pop("session")
+    for key, default in LATE_RUNTIME_DEFAULTS.items():
+        if effective_data["runtime"].get(key) == default:
+            effective_data["runtime"].pop(key)
     digest = hashlib.sha256(
         json.dumps(
             {
@@ -450,7 +469,7 @@ def effective(bundle):
 def field_application(group, key):
     if group == "identity":
         return "maintenance" if key == "bot_id" else "immediate"
-    if group in {"models", "models.*", "connections.*", "model_roles", "prompts", "web"}:
+    if group in {"models", "models.*", "connections.*", "model_roles", "prompts", "web", "session"}:
         return "new_run"
     if group == "budgets":
         return "immediate" if key == "daily_cost_cny" else "new_run"
@@ -484,6 +503,7 @@ def schema():
         "collection": plain(defaults.collection),
         "billing": plain(defaults.billing),
         "web": plain(defaults.web),
+        "session": plain(defaults.session),
         "agent": {k: getattr(defaults, k) for k in GROUPS["agent"]},
         "serve": {k: getattr(defaults, {"db_path": "serve_db"}.get(k, k)) for k in GROUPS["serve"]},
         "shadow": {"db_path": defaults.shadow_db},
@@ -495,6 +515,7 @@ def schema():
         "collection": Collection,
         "billing": BillingSpec,
         "web": WebSpec,
+        "session": SessionSpec,
     }
     result = {}
     for group, keys in GROUPS.items():

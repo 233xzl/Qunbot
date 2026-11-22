@@ -27,13 +27,20 @@ CLI 发布的版本在下次受控启动时采用。管理台支持在线应用�
 | `web` | search/fetch 和备用；独立搜索、读取价格 | WebBackends / GeminiSearchClient |
 | `prompts` | persona、evidence、reply_contract、decision、tool_decision、search 的文件路径 | `prompt_options`、模型调用、搜索客户端 |
 | `budgets` | 总期限 120 秒、上下文上限 80 条、每日普通用户上限 ¥3 | Settings.limits / RunFlow / UsageLedger |
-| `runtime` | 全局/用户并发 4/2、队列 32/4、3 搜 5 读、工具超时 25 秒、结束预留 30 秒、80%/100% 闸门 | 调度、发送限速、工具预算、每日预算判断 |
+| `runtime` | 全局/用户并发 4/2、队列 32/4、3 搜 5 读、工具超时 25 秒、结束预留 30 秒、80%/100% 闸门；每群受理频率 `group_admit_max` / `group_admit_window_minutes`（默认不限、10 分钟） | 调度、发送限速、工具预算、每日预算判断、受理频率 |
+| `session` | 群会话模式，默认关闭；闲置 20 分钟、上一轮 8,000 token 或满 120 分钟后重开一段；每轮最多带入 40 条新群消息 | LiveAgent 回答请求、`session.SessionManager` |
 | `collection` / `retention` | 采集、媒体下载；24 小时普通消息、7 天关联消息、2 GB 媒体 | MediaCollector / 清理计划与执行 |
 | `serve` / `shadow` / `knowledge` | 数据路径、发送、自同步、失败回复、表情与主人控制 | 运行入口、各业务存储 |
 | `billing` | 汇率、报价、免费查询周期、账号总账路径 | AccountBook / GoogleFreeQuota |
 | `credentials` | file / env / managed 引用 | CredentialStore，仅在需要连接或显式管理时读取 |
 
 预算达到 100% 后仍允许主人调用，故称普通用户预算上限。累计消费、预留、免费额度已用数、暂停与熔断状态属于运行状态，不参与配置发布或回滚。赠金与新增硬预算策略仍见 tasklist 的 B3/B4。
+
+**受理频率。** `group_admit_max` 大于 0 时，一个群在 `group_admit_window_minutes` 内最多受理这么多条普通成员的提问；计数来自已保存的 run，重启后延续。超出的提问记为 `rejected / group_rate_limited`，不调用模型，本群每个时段提示一次。主人的提问不受限制。群个性化可在 `group_profiles.<群号>.runtime` 中逐项覆盖。
+
+**群会话。** 开启后，同一群的连续提问接在同一段多轮对话里：每次提问追加一轮，内容是上一轮之后的新群消息和本次提问；模型上一轮的回复原样保留。群友标签和 `#m<n>` 编号在一段内固定。回答发出（或在仅记录模式下记录）后才接入会话；失败、取消、未发送和备用模型的回答不接入。同时进行的提问从同一轮继续，只有最先发出的接入。撤回段内消息、屏蔽段内发言人、更换回答模型、人设或工具时开新段。会话保存在内存中，重启后重新开始。群个性化可在 `group_profiles.<群号>.session` 中覆盖 `enabled`、`idle_minutes` 等字段。
+
+会话让回答口径更一致，也让供应商的隐式前缀缓存可以命中；但请求比无状态请求长，总费用通常会增加。以 Gemini 4 Hydrogen 为例，续接时上一轮请求除最后约 2k token 外可以命中缓存，缓存约 2–3 分钟后失效。
 
 上下文方案 C 的规则集合、框架权限、工具 schema、模型工具循环的内部轮次上限仍由代码定义。`runtime` 不开放尚未接入在线行为的 `moderation_threshold`、`retention_days`；原文保留使用 `retention`。工具次数可设为 0，其余数量/期限为正数；工具执行同时受总期限和模型轮次上限约束。
 

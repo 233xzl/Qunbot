@@ -1,6 +1,6 @@
 [project]
 name = "qunbot"
-version = "0.2.0"
+version = "0.3.0"
 description = "QQ group chat bot backend with per-group configuration and a local admin UI"
 readme = "README.md"
 license = "Apache-2.0"

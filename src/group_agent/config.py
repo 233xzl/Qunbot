@@ -11,6 +11,11 @@ from .policy import RuntimeLimits
 
 
 GROUP_TOOL_LIMITS = {"web_searches", "web_reads"}
+# Admission rate per group (`Orchestrator.submit`): at most `group_admit_max` admitted
+# requests per `group_admit_window_minutes`; 0 = no limit.
+GROUP_ADMIT_LIMITS = {"group_admit_window_minutes", "group_admit_max"}
+# `group_profiles.<id>.runtime` keys a group may override (whole numbers >= 0).
+GROUP_RUNTIME_KEYS = GROUP_TOOL_LIMITS | GROUP_ADMIT_LIMITS
 
 
 class ConfigError(ValueError):
@@ -49,6 +54,23 @@ class Collection:
     download_per_second: float = 2.0
     max_concurrent_downloads: int = 2
     max_pending_downloads: int = 200
+
+
+@dataclass(frozen=True)
+class SessionSpec:
+    """`[session]` table: per-group multi-turn answer sessions (`session.py`).
+
+    Off by default. A session restarts after `idle_minutes` without a committed turn, once
+    its last request reached `max_tokens`, or `max_age_minutes` after it started."""
+
+    enabled: bool = False
+    idle_minutes: int = 20
+    max_tokens: int = 8000
+    max_age_minutes: int = 120
+    max_new_messages: int = 40  # group messages added per turn (the most recent ones)
+
+
+SESSION_MINIMUMS = {"idle_minutes": 1, "max_tokens": 1000, "max_age_minutes": 1, "max_new_messages": 0}
 
 
 @dataclass(frozen=True)
@@ -105,6 +127,7 @@ class Settings:
     web: "WebSpec" = field(default_factory=lambda: WebSpec())
     billing: "BillingSpec" = field(default_factory=lambda: BillingSpec())
     runtime: RuntimeLimits = field(default_factory=RuntimeLimits)
+    session: SessionSpec = field(default_factory=SessionSpec)
     prompts: dict[str, str] = field(default_factory=dict, repr=False)
     group_profiles: dict = field(default_factory=dict, repr=False)
     credential_refs: dict = field(default_factory=dict, repr=False)
@@ -132,6 +155,13 @@ class Settings:
         profile = self.group_profiles.get(group_id, {})
         overrides = profile.get("runtime") if profile.get("enabled") else None
         return replace(base, **overrides) if overrides else base
+
+    def session_for_group(self, group_id) -> SessionSpec:
+        from dataclasses import replace
+
+        profile = self.group_profiles.get(group_id, {})
+        overrides = profile.get("session") if profile.get("enabled") else None
+        return replace(self.session, **overrides) if overrides else self.session
 
     def for_group(self, group_id):
         from dataclasses import replace
@@ -484,6 +514,23 @@ def _whole(data: dict, name: str, default: int, prefix: str, *, minimum: int, ma
     return value
 
 
+def parse_session(table: dict, prefix: str, base: SessionSpec) -> SessionSpec:
+    """`[session]` or a group's `session` override; missing keys keep `base`."""
+    if not isinstance(table, dict):
+        raise ConfigError(f"{prefix}: expected a table")
+    for key in table:
+        if key not in SessionSpec.__dataclass_fields__:
+            raise ConfigError(f"{prefix}.{key}: unknown field")
+    enabled = table.get("enabled", base.enabled)
+    if type(enabled) is not bool:
+        raise ConfigError(f"{prefix}.enabled: expected a boolean")
+    values = {
+        key: _whole(table, key, getattr(base, key), prefix, minimum=minimum)
+        for key, minimum in SESSION_MINIMUMS.items()
+    }
+    return SessionSpec(enabled=enabled, **values)
+
+
 def _models(data: dict, usd_cny: float = BillingSpec().usd_cny) -> dict[str, ModelSpec]:
     specs = {}
     for name, table in _table(data, "models").items():
@@ -741,7 +788,7 @@ def parse_settings(data: dict, path: Path) -> Settings:
     runtime_values = {
         k: (
             _whole(runtime, k, getattr(defaults, k), "runtime", minimum=0)
-            if k in GROUP_TOOL_LIMITS
+            if k in GROUP_RUNTIME_KEYS
             else _number(
                 runtime,
                 k,
@@ -755,6 +802,9 @@ def parse_settings(data: dict, path: Path) -> Settings:
     limits = RuntimeLimits(**runtime_values)
     if not 0 < limits.degrade_ratio < limits.cap_ratio <= 1:
         raise ConfigError("runtime.degrade_ratio: expected 0 < degrade_ratio < cap_ratio <= 1")
+    if limits.group_admit_max and limits.group_admit_window_minutes < 1:
+        raise ConfigError("runtime.group_admit_window_minutes: expected at least 1")
+    session = parse_session(_table(data, "session"), "session", SessionSpec())
     identity, budgets, retention = (_table(data, n) for n in ("identity", "budgets", "retention"))
     r = Retention(
         **{
@@ -889,6 +939,7 @@ def parse_settings(data: dict, path: Path) -> Settings:
         web=_web(data),
         billing=billing,
         runtime=limits,
+        session=session,
         prompts=data.get("_prompt_text", {}),
         credential_refs=data.get("credentials", {}),
     )

@@ -2,7 +2,7 @@
 
 Qunbot 是一个 QQ 群聊机器人后端。SnowLuma 通过 OneBot 提供消息连接，Qunbot 负责群聊上下文、模型调用、搜索、显式教学和回复发送。每个群可以继承全局配置，也可以单独指定人设、模型和每日预算。
 
-当前包版本为 **0.2.0**。下载和升级步骤见下文，各版本变化见[更新日志](CHANGELOG.md)。运行 `uv run --locked qunbot --version` 可查看本地版本号。
+当前包版本为 **0.3.0**。下载和升级步骤见下文，各版本变化见[更新日志](CHANGELOG.md)。运行 `uv run --locked qunbot --version` 可查看本地版本号。
 
 ## 一条命令部署 WebUI
 

@@ -718,6 +718,30 @@ function profileEditor() {
         `<label class="field">${esc(settingsText.label(["runtime", key]))}<input type="number" min="0" step="1" ${scoped("runtime", key)} value="${esc(profile.runtime?.[key] ?? "")}" placeholder="${esc(hint)}"></label>`,
       );
     }
+    fields.push(`<p class="muted">${esc(settingsText.t("group.admit_help"))}</p>`);
+    for (const key of ["group_admit_max", "group_admit_window_minutes"]) {
+      const inherited = cfg.data.runtime?.[key] ?? cfg.schema.runtime[key].default;
+      const hint = settingsText.t("group.inherit_value").replace("{value}", inherited);
+      fields.push(
+        `<label class="field">${esc(settingsText.label(["runtime", key]))}<input type="number" min="${key === "group_admit_max" ? 0 : 1}" step="1" ${scoped("runtime", key)} value="${esc(profile.runtime?.[key] ?? "")}" placeholder="${esc(hint)}"></label>`,
+      );
+    }
+    {
+      const inherited = cfg.data.session?.enabled ?? cfg.schema.session.enabled.default;
+      const value = profile.session?.enabled;
+      const opt = (v, text) =>
+        `<option value="${v}" ${String(value ?? "") === v ? "selected" : ""}>${esc(text)}</option>`;
+      fields.push(
+        `<label class="field">${esc(settingsText.label(["session", "enabled"]))}<select data-bool="1" ${scoped("session", "enabled")}>${opt("", `继承全局 · ${inherited ? settingsText.t("common.on") : settingsText.t("common.off")}`)}${opt("true", settingsText.t("common.on"))}${opt("false", settingsText.t("common.off"))}</select></label>`,
+      );
+      for (const key of ["idle_minutes", "max_tokens"]) {
+        const base = cfg.data.session?.[key] ?? cfg.schema.session[key].default;
+        const hint = settingsText.t("group.inherit_value").replace("{value}", base);
+        fields.push(
+          `<label class="field">${esc(settingsText.label(["session", key]))}<input type="number" min="1" step="1" ${scoped("session", key)} value="${esc(profile.session?.[key] ?? "")}" placeholder="${esc(hint)}"></label>`,
+        );
+      }
+    }
     for (const key of Object.keys(cfg.schema.prompts)) {
       const value = profile.prompts?.[key] || "";
       const inherited = cfg.prompts[key] || cfg.prompt_defaults[key] || "";
@@ -761,17 +785,19 @@ function bindProfiles() {
     (el) =>
       (el.onchange = () => {
         const { profile: gid, section, key } = el.dataset;
-        if (section === "runtime" && !el.reportValidity()) {
-          el.value = cfg.data.group_profiles?.[gid]?.runtime?.[key] ?? "";
+        if ((section === "runtime" || section === "session") && !el.reportValidity()) {
+          el.value = cfg.data.group_profiles?.[gid]?.[section]?.[key] ?? "";
           return;
         }
         const profile = ((cfg.data.group_profiles ??= {})[gid] ??= {});
         const target = section ? (profile[section] ??= {}) : profile;
         if (el.type === "checkbox") target[key] = el.checked;
         else if (!el.value.trim()) delete target[key];
+        else if (el.dataset.bool) target[key] = el.value === "true";
         else if (el.type === "number") target[key] = Number(el.value);
         else target[key] = el.value;
-        if (section === "runtime" && !Object.keys(target).length) delete profile.runtime;
+        if ((section === "runtime" || section === "session") && !Object.keys(target).length)
+          delete profile[section];
         changed();
         if (key === "enabled") renderEditor();
         else if (section === "prompts")
@@ -813,6 +839,7 @@ function renderEditor() {
         "context_messages",
       ]) +
       section("runtime", "运行策略") +
+      section("session", "群会话") +
       section("agent", "回答策略") +
       section("serve", "QQ 与发送策略") +
       section("collection", "消息与媒体采集");

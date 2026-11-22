@@ -676,6 +676,34 @@ class Store:
         ).fetchone()
         return "answered" if sent else "open"
 
+    def admitted_runs(self, bot_id: str, group_id: str, since: float) -> int:
+        """Reply runs of a group created since `since` that were not rejected (the per-group
+        admission rate; cost-cap and rate-limited rejections do not count)."""
+        return self.con.execute(
+            "SELECT count(*) FROM runs WHERE bot_id=? AND group_id=? AND purpose='reply'"
+            " AND created_at>=? AND state<>'rejected'",
+            (bot_id, group_id, since),
+        ).fetchone()[0]
+
+    def revoked_among(self, bot_id: str, group_id: str, message_ids) -> bool:
+        """True when any of the messages was recalled or is no longer stored."""
+        ids = [str(i) for i in message_ids]
+        if not ids:
+            return False
+        found = 0
+        for start in range(0, len(ids), 500):
+            chunk = ids[start : start + 500]
+            marks = ",".join("?" * len(chunk))
+            row = self.con.execute(
+                f"SELECT count(*), coalesce(sum(revoked), 0) FROM messages WHERE bot_id=?"
+                f" AND group_id=? AND message_id IN ({marks})",
+                (bot_id, group_id, *chunk),
+            ).fetchone()
+            if row[1]:
+                return True
+            found += row[0]
+        return found < len(set(ids))
+
     def message_row(self, seq: int) -> sqlite3.Row | None:
         return self.con.execute("SELECT * FROM messages WHERE seq=?", (seq,)).fetchone()
 

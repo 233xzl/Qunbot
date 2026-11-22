@@ -35,6 +35,10 @@ class RuntimeLimits:
     group_min_interval_seconds: float = 2
     group_per_minute: int = 10
     account_per_minute: int = 20
+    # Admission rate per group: at most `group_admit_max` admitted requests per window
+    # (0 = no limit); the owner is not limited. One notice per group per window.
+    group_admit_window_minutes: int = 10
+    group_admit_max: int = 0
     # RUN-10 / D-04 daily cost cap ratios.
     degrade_ratio: float = 0.8
     cap_ratio: float = 1.0
@@ -138,3 +142,4 @@ def moderation_blocks(result: Any, limits: RuntimeLimits = RuntimeLimits()) -> b
 
 
 BUSY_NOTICE_TEXT = "现在排队的请求有点多，请稍后再问。"
+GROUP_RATE_NOTICE_TEXT = "本群这会儿提问有点多，我先歇一下，过几分钟再问吧。"

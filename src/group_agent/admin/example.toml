@@ -241,3 +241,17 @@ tool_timeout_seconds = 25
 finish_reserve_seconds = 30
 degrade_ratio = 0.9
 cap_ratio = 1.0
+# Per-group admission rate: at most group_admit_max requests per window (0 = no limit).
+# The owner is not limited; the group sees one notice per window.
+group_admit_max = 0
+group_admit_window_minutes = 10
+
+# Group sessions: consecutive requests of a group continue one multi-turn conversation,
+# so answers stay consistent and the provider can reuse the cached prefix. Requests grow
+# longer; off by default. Groups can override these in group_profiles.<id>.session.
+[session]
+enabled = false
+idle_minutes = 20
+max_tokens = 8000
+max_age_minutes = 120
+max_new_messages = 40

@@ -556,8 +556,14 @@ class LiveModel:
         tools: Sequence[Callable] = (),
         max_requests: int = 6,
         max_tool_calls: int = 8,
+        message_history: Sequence[Any] | None = None,
+        session_out: dict | None = None,
     ) -> tuple[str, CallRecord]:
-        """`thinking_level` overrides the model's level for this call (Gemini only)."""
+        """`thinking_level` overrides the model's level for this call (Gemini only).
+
+        `message_history`: earlier turns (Pydantic AI messages) the request continues
+        (`session.py`). `session_out`, when given, receives `messages` (the complete
+        history after this call) and `tokens` (input + output of its last request)."""
         return await self._run(
             task,
             "text",
@@ -569,6 +575,8 @@ class LiveModel:
             tools=tools,
             max_requests=max_requests,
             max_tool_calls=max_tool_calls,
+            message_history=message_history,
+            session_out=session_out,
         )
 
     async def structured(
@@ -609,6 +617,8 @@ class LiveModel:
         tools=(),
         max_requests=6,
         max_tool_calls=8,
+        message_history=None,
+        session_out=None,
     ):
         record = CallRecord(
             task=task,
@@ -633,7 +643,7 @@ class LiveModel:
             record.breaker = ticket
         outcome = "cancelled"
         try:
-            if tools:
+            if tools or message_history or session_out is not None:
                 result = await self._call_tools(
                     record,
                     instructions,
@@ -643,6 +653,8 @@ class LiveModel:
                     tools,
                     max_requests,
                     max_tool_calls,
+                    message_history=message_history,
+                    session_out=session_out,
                 )
             else:
                 result = await self._call(record, instructions, parts, output, timeout, thinking)
@@ -674,6 +686,9 @@ class LiveModel:
         max_requests,
         max_tool_calls,
         output=str,
+        *,
+        message_history=None,
+        session_out=None,
     ):
         """Run Pydantic AI with per-request accounting, including validation retries."""
         from pydantic_ai import Agent, BinaryContent
@@ -766,6 +781,7 @@ class LiveModel:
                 )
                 result = await agent.run(
                     prompt,
+                    message_history=list(message_history) if message_history else None,
                     usage_limits=UsageLimits(
                         request_limit=max_requests,
                         tool_calls_limit=max_tool_calls,
@@ -805,6 +821,10 @@ class LiveModel:
             raise budget_error
         if result is None:
             raise ModelCallError(record.status, record)
+        if session_out is not None:
+            last = next((r for r in reversed(requests) if r.status == "ok"), None)
+            session_out["messages"] = result.all_messages()
+            session_out["tokens"] = (last.usage.input + last.usage.output) if last else 0
         return result.output, record
 
     async def _call(self, record, instructions, parts, output, timeout, thinking):
@@ -847,6 +867,8 @@ class BoundCall:
         max_requests: int = 6,
         max_tool_calls: int = 8,
         parts_factory: Callable[[], Sequence[str | ImagePart]] | None = None,
+        message_history: Sequence[Any] | None = None,
+        session_out: dict | None = None,
     ):
         self.model, self.task, self.instructions = model, task, instructions
         self.parts, self.timeout, self.sink = parts, timeout, sink
@@ -854,6 +876,7 @@ class BoundCall:
         self.tools = tools
         self.parts_factory = parts_factory
         self.max_requests, self.max_tool_calls = max_requests, max_tool_calls
+        self.message_history, self.session_out = message_history, session_out
 
     async def run(self, context: Context) -> str:
         budget = self.timeout()
@@ -874,6 +897,11 @@ class BoundCall:
                         "max_tool_calls": self.max_tool_calls,
                     }
                     if self.tools
+                    else {}
+                ),
+                **(
+                    {"message_history": self.message_history, "session_out": self.session_out}
+                    if self.session_out is not None
                     else {}
                 ),
             )
