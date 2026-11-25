@@ -11,7 +11,7 @@ from pydantic_ai.models.function import FunctionModel
 from group_agent.config import ConfigError, SessionSpec, parse_settings
 from group_agent.config_service import validate_keys
 from group_agent.live_agent import LiveAgent
-from group_agent.policy import GROUP_RATE_NOTICE_TEXT, RuntimeLimits
+from group_agent.policy import RuntimeLimits
 from group_agent.session import SessionManager
 
 from test_live_replay import USAGE, live_config
@@ -28,7 +28,11 @@ def prompt_text(message) -> str:
     for part in message.parts:
         if isinstance(part, UserPromptPart):
             content = part.content
-            out += [content] if isinstance(content, str) else [c for c in content if isinstance(c, str)]
+            out += (
+                [content]
+                if isinstance(content, str)
+                else [c for c in content if isinstance(c, str)]
+            )
     return "\n".join(out)
 
 
@@ -55,9 +59,7 @@ def session_harness(tmp_path, *, fail=lambda n: False, delay=0.0, **spec):
 
         return FunctionModel(fn)
 
-    config = live_config(
-        tmp_path, gemini, deepseek, decision_mode="lightweight", answer_tools=True
-    )
+    config = live_config(tmp_path, gemini, deepseek, decision_mode="lightweight", answer_tools=True)
     h.orch.agent = LiveAgent(h.orch, config)
     return h, calls
 
@@ -211,7 +213,7 @@ def fast(limits=None, **kw):
     return Harness(limits=limits, agent_kw={"delays": delays}, **kw)
 
 
-async def test_group_admission_rate_limits_members_not_the_owner():
+async def test_group_admission_rate_notifies_each_request_including_owner():
     h = fast(RuntimeLimits(group_admit_max=2))
     for i in range(4):
         h.feed(ev(f"a{i}", user=f"U{i}"))
@@ -226,13 +228,20 @@ async def test_group_admission_rate_limits_members_not_the_owner():
         "group_rate_limited",
     ]
     assert runs["a2"]["state"] == "rejected"
-    assert runs["own"]["state"] == runs["b0"]["state"] == "succeeded"
+    assert runs["own"]["error_kind"] == "group_rate_limited"
+    assert runs["b0"]["state"] == "succeeded"
     notices = [o for o in h.outbound() if o["kind"] == "busy_notice"]
-    assert [n["text"] for n in notices] == [GROUP_RATE_NOTICE_TEXT]
-    assert sorted(h.agent.answered) == ["a0", "a1", "b0", "own"]
+    assert {n["reply_to"] for n in notices} == {"a2", "a3", "own"}
+    window = h.orch.admission_window("G1", wall())
+    assert window.used == 2
+    assert window.limit_notice().startswith("当前回答次数已达上限，预计 ")
+    assert window.status_text().endswith(window.limit_notice())
+    assert all(n["text"] == window.limit_notice() for n in notices)
+    assert h.feed(ev("a2", user="U2")) == "duplicate"
+    assert len(h.outbound()) == 6
+    assert sorted(h.agent.answered) == ["a0", "a1", "b0"]
     # The window passes (counted from stored runs): members are served again.
     h.store.con.execute("UPDATE runs SET created_at = created_at - 601")
-    h.orch._admit_notices.clear()
     h.feed(ev("a5", user="U5"))
     await h.settle()
     assert h.runs()["a5"]["state"] == "succeeded"
@@ -250,3 +259,30 @@ async def test_group_override_of_the_admission_rate():
     runs = h.runs()
     assert runs["a1"]["error_kind"] == "group_rate_limited"
     assert runs["b1"]["state"] == "succeeded"
+
+
+async def test_rolling_window_persists_across_restart_and_lowered_limit(tmp_path):
+    from group_agent.store import Store
+
+    path = tmp_path / "messages.sqlite3"
+    store = Store(path)
+    h = fast(RuntimeLimits(group_admit_max=10), store=store)
+    for i in range(10):
+        h.feed(ev(f"a{i}", user=f"U{i}"))
+    await h.settle()
+    # Admissions span midnight in China. A fractional expiry rounds up in the notice.
+    start = 57590.25  # 1970-01-01 23:59:50.25
+    with store.con:
+        for i in range(10):
+            store.con.execute(
+                "UPDATE runs SET created_at=? WHERE message_id=?", (start + i, f"a{i}")
+            )
+    store.close()
+    store = Store(path)
+    h = fast(RuntimeLimits(group_admit_max=3, group_admit_window_minutes=1), store=store)
+    full = h.orch.admission_window("G1", start + 9)
+    assert full.used == 10 and full.available_at == start + 7 + 60
+    assert full.limit_notice() == "当前回答次数已达上限，预计 1970-01-02 00:00:58 恢复。"
+    assert h.orch.admission_window("G1", full.available_at).available_at is None
+    assert h.orch.admission_window("G2", start + 9).used == 0
+    store.close()

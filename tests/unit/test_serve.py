@@ -1,6 +1,7 @@
 """`--serve` end to end with a fake SnowLuma connection and dry models: nothing is sent."""
 
 import asyncio
+from dataclasses import replace
 import json
 import sqlite3
 
@@ -156,6 +157,59 @@ def test_serve_dry_models_records_answers_and_never_sends(tmp_path):
     assert store.con.execute("SELECT count(*) FROM usage_ledger").fetchone()[0] >= 4
     assert summary["session"]["outbound"] == {"recorded_not_sent": 2}
     store.close()
+
+
+async def test_status_and_reactions_after_group_rate_decision(tmp_path):
+    questions = [message("m1", "U1", "你好"), message("m2", "OWNER", "再问")]
+    stop = asyncio.Event()
+
+    class RateConnection(FakeConnection):
+        async def send(self, frame):
+            req = json.loads(frame)
+            if req["action"] == "set_msg_emoji_like":
+                self.sent.append(req)
+                self.incoming.put_nowait(
+                    json.dumps({"status": "ok", "retcode": 0, "echo": req["echo"]})
+                )
+                if req["params"]["message_id"] == "m2":
+                    self.incoming.put_nowait(json.dumps(message("s1", "OWNER", "#状态")))
+            else:
+                await super().send(frame)
+                if sum(r["action"] == "send_group_msg" for r in self.sent) == 3:
+                    stop.set()
+
+    conn = RateConnection(questions + [questions[-1]])
+
+    async def connect(*args, **kwargs):
+        return conn
+
+    settings = settings_for(tmp_path)
+    limits = replace(settings.runtime, group_admit_max=1, group_min_interval_seconds=0)
+    await asyncio.wait_for(
+        run_serve(
+            replace(settings, runtime=limits),
+            db_path=tmp_path / "serve.sqlite3",
+            media_root=tmp_path / "media",
+            duration=None,
+            dry_models=True,
+            cleanup=False,
+            budget_cny=0.01,
+            knowledge_path=None,
+            connect=connect,
+            stop=stop,
+            live_send=True,
+            reaction=True,
+            owner_control=True,
+        ),
+        timeout=15,
+    )
+    faces = [r["params"] for r in conn.sent if r["action"] == "set_msg_emoji_like"]
+    assert [(f["message_id"], f["emoji_id"]) for f in faces] == [("m1", "424"), ("m2", "8")]
+    replies = [r["params"]["message"] for r in conn.sent if r["action"] == "send_group_msg"]
+    texts = {m[0]["data"]["id"]: m[1]["data"]["text"] for m in replies}
+    assert texts["m2"].startswith("当前回答次数已达上限，预计 ")
+    assert "已用 1/1，更新于 " in texts["s1"]
+    assert texts["s1"].endswith(texts["m2"])
 
 
 def _serve_with_command(tmp_path, owner_send):

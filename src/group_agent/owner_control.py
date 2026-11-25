@@ -113,6 +113,7 @@ class OwnerControl:
         deliver: Callable[[str], Awaitable[Any]] | None = None,
         rate: Any = None,
         status_info: Callable[[], dict] = lambda: {},
+        group_status: Callable[[str, float], str] | None = None,
         clock: Callable[[], float] = time.time,
         stale_seconds: float = STALE_SECONDS,
         log: Callable[[str], None] = lambda _: None,
@@ -122,6 +123,7 @@ class OwnerControl:
         `cap`, `cost_mode` (non-owner policy), `answer_model`, `search_model` for the status line."""
         self.store, self.access, self.state = store, access, state
         self.cancel_replies, self.deliver, self.rate = cancel_replies, deliver, rate
+        self.group_status = group_status
         self.status_info, self.clock, self.stale_seconds, self.log = (
             status_info,
             clock,
@@ -170,6 +172,8 @@ class OwnerControl:
         if effect != "stale":
             # The text is fixed now, at the state this command produced.
             text = self.text_for(effect)
+            if action == "status" and self.group_status is not None:
+                text += "\n" + self.group_status(message.group_id, now)
             task = asyncio.get_running_loop().create_task(self._confirm(message, text))
             self.tasks.add(task)
             task.add_done_callback(self.tasks.discard)

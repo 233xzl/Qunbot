@@ -674,9 +674,8 @@ class ReactionResult:
 
 class ReactionChannel:
     """The second write capability (D-20): `set_msg_emoji_like` only, with the emoji id
-    fixed when the channel is issued and `set` always true; the only parameter left is the
-    message id, which the holder (`reaction.ProcessingReaction`) checks. Rate-limited:
-    calls above `rate_per_second` (burst 2) are refused, not queued."""
+    selected from the two faces fixed at issue. Both outcomes share one token bucket.
+    A limited notice waits for capacity; a processing reaction above the burst is skipped."""
 
     def __init__(
         self,
@@ -691,14 +690,21 @@ class ReactionChannel:
         if not isinstance(emoji_id, str) or not emoji_id.isdigit() or len(emoji_id) > 6:
             raise ActionRefused("bad_emoji")
         self._gateway, self._grant, self._emoji_id = gateway, grant, emoji_id
+        # QQ faces: closed mouth (8), or sleepy (25) if 8 is the processing face.
+        self._limited_emoji_id = "25" if emoji_id == "8" else "8"
         self._bucket = TokenBucket(rate_per_second, 2, clock)
 
-    async def set_msg_emoji_like(self, message_id: str, *, timeout: float = 5.0) -> ReactionResult:
+    async def set_msg_emoji_like(
+        self, message_id: str, *, rate_limited: bool = False, timeout: float = 5.0
+    ) -> ReactionResult:
         if isinstance(message_id, bool) or not isinstance(message_id, (str, int)):
             return ReactionResult("failed", "bad_message_id")
-        if not self._bucket.try_acquire():
+        if rate_limited:
+            await self._bucket.acquire()
+        elif not self._bucket.try_acquire():
             return ReactionResult("failed", "rate_limited")
-        params = {"message_id": _platform_id(message_id), "emoji_id": self._emoji_id, "set": True}
+        emoji_id = self._limited_emoji_id if rate_limited else self._emoji_id
+        params = {"message_id": _platform_id(message_id), "emoji_id": emoji_id, "set": True}
         try:
             await self._gateway._request(REACTION_ACTION, params, timeout, self._grant, None)
         except ActionFailed as exc:

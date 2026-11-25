@@ -292,7 +292,7 @@ def test_paused_reaction_hook_is_not_called_through_a_real_reaction_holder():
         def __init__(self):
             self.ids = []
 
-        async def set_msg_emoji_like(self, message_id, *, timeout=5.0):
+        async def set_msg_emoji_like(self, message_id, *, rate_limited=False, timeout=5.0):
             self.ids.append(message_id)
             from group_agent.gateway import ReactionResult
 

@@ -34,7 +34,7 @@ class FakeChannel:
         self.result = result or ReactionResult("ok")
         self.error = error
 
-    async def set_msg_emoji_like(self, message_id, *, timeout=5.0):
+    async def set_msg_emoji_like(self, message_id, *, rate_limited=False, timeout=5.0):
         self.calls.append(message_id)
         if self.error is not None:
             raise self.error
@@ -247,7 +247,7 @@ def test_reaction_channel_is_one_shot_and_only_when_enabled():
         )
 
 
-def _react(retcode=0, n=1, clock=None):
+def _react(retcode=0, n=1, clock=None, rate_limited=False, processing="424"):
     async def main():
         ws = Ws(retcode)
 
@@ -262,11 +262,14 @@ def _react(retcode=0, n=1, clock=None):
             connect=connect,
             clock=clock or Clock(),
         )
-        channel = gw.reaction_channel("424")
+        channel = gw.reaction_channel(processing)
         stop = asyncio.Event()
         runner = asyncio.create_task(gw.run(stop))
         await gw.wait_connected(2)
-        results = [await channel.set_msg_emoji_like("10001", timeout=1) for _ in range(n)]
+        results = [
+            await channel.set_msg_emoji_like("10001", timeout=1, rate_limited=rate_limited)
+            for _ in range(n)
+        ]
         stop.set()
         await runner
         return ws.frames, results
@@ -284,6 +287,9 @@ def test_reaction_frame_failure_and_rate_limit():
         }
     ]
     assert results == [ReactionResult("ok")]
+    for processing, expected in [("424", "8"), ("8", "25")]:
+        frames, _ = _react(processing=processing, rate_limited=True)
+        assert frames[0]["params"]["emoji_id"] == expected
     _, results = _react(retcode=1200)
     assert results == [ReactionResult("failed", "failed", 1200)]
     # Burst of 2 per second: the third immediate call is refused without a frame.

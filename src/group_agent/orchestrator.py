@@ -32,7 +32,9 @@ from __future__ import annotations
 import asyncio
 from collections import Counter, OrderedDict, defaultdict
 from collections.abc import Awaitable, Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
+from datetime import datetime
+import math
 import json
 from pathlib import Path
 import time
@@ -45,7 +47,6 @@ from .contracts import Message
 from .outbox import OutboundRecord, fit_message_text
 from .policy import (
     COST_REJECTED,
-    GROUP_RATE_NOTICE_TEXT,
     RuntimeLimits,
     ToolBudget,
     is_expired,
@@ -55,7 +56,7 @@ from .knowledge_base import KnowledgeBase
 from .runflow import CURRENT_RUN, RunFlow, RunTrace
 from .store import Store, _message
 from .teaching import ASKS_USER, UNAUTHORIZED_TEXT, KnowledgeLedger, reply_for
-from .usage import UsageLedger
+from .usage import CN_TZ, UsageLedger
 
 # Trace states (runflow) -> persisted run states (store.RUN_STATES).
 RUN_STATE_OF = {
@@ -75,6 +76,29 @@ RUN_STATE_OF = {
     "rejected_busy": "rejected",
 }
 TEACHING_PENDING_TEXT = "教学写入还没有开放，这条没有记录。"
+
+
+@dataclass(frozen=True)
+class GroupAdmissionWindow:
+    maximum: int
+    minutes: int
+    used: int
+    now: float
+    available_at: float | None
+
+    def limit_notice(self) -> str:
+        if self.available_at is None:
+            return ""
+        current = datetime.fromtimestamp(self.now, CN_TZ)
+        available = datetime.fromtimestamp(math.ceil(self.available_at), CN_TZ)
+        fmt = "%H:%M:%S" if current.date() == available.date() else "%Y-%m-%d %H:%M:%S"
+        return f"当前回答次数已达上限，预计 {available.strftime(fmt)} 恢复。"
+
+    def status_text(self) -> str:
+        quota = f"{self.maximum} 次/{self.minutes} 分钟，已用 {self.used}/{self.maximum}"
+        updated = datetime.fromtimestamp(self.now, CN_TZ).strftime("%H:%M:%S")
+        line = f"本群回答频率：{quota if self.maximum else '不限'}，更新于 {updated}"
+        return line + ("。" + self.limit_notice() if self.available_at is not None else "")
 
 
 class OnlineTrace(RunTrace):
@@ -243,7 +267,6 @@ class Orchestrator(RunFlow):
         # Per-group answer sessions (`session.py`) and the last admission-limit notice
         # per group (one per window).
         self.sessions = SessionManager()
-        self._admit_notices: dict[str, float] = {}
         self.interrupted = store.interrupt_active_runs(clock())
         self.agent = agent_factory(self)
 
@@ -339,7 +362,12 @@ class Orchestrator(RunFlow):
         return self.clock() - (self.now() - loop_time)
 
     # -- intake side ------------------------------------------------------------------
-    async def serve(self, queue, stop: asyncio.Event) -> None:
+    async def serve(
+        self,
+        queue,
+        stop: asyncio.Event,
+        on_admission: Callable[[ReplyRequest, str], None] | None = None,
+    ) -> None:
         """Consume `queue` (an `admission.RequestQueue`) until `stop` is set."""
         while not stop.is_set():
             try:
@@ -347,7 +375,9 @@ class Orchestrator(RunFlow):
             except TimeoutError:
                 continue
             try:
-                self.submit(request)
+                outcome = self.submit(request)
+                if on_admission is not None:
+                    on_admission(request, outcome)
             except Exception as exc:  # one bad request must not stop the consumer
                 self.counts["submit_errors"] += 1
                 self.log(f"submit failed: {type(exc).__name__}")
@@ -364,8 +394,9 @@ class Orchestrator(RunFlow):
             return "paused"
         run_id = uuid4().hex
         now = self.clock()
-        if not request.is_owner and self._admit_limited(m, now):
-            return self._reject_rate_limited(run_id, request, now)
+        window = self.admission_window(m.group_id, now)
+        if window.available_at is not None:
+            return self._reject_rate_limited(run_id, request, now, window.limit_notice())
         mode, scope = self.usage.decision(request.is_owner, m.group_id)
         if mode == COST_REJECTED:  # D-12: no run, no notice for non-owners
             if self.store.create_run(
@@ -415,17 +446,21 @@ class Orchestrator(RunFlow):
         task.add_done_callback(lambda t, tr=trace: self._finish(tr, t))
         return "started"
 
-    def _admit_limited(self, m: Message, now: float) -> bool:
-        """Per-group admission rate (`runtime.group_admit_max` per
-        `group_admit_window_minutes`, group overrides apply); counted from the stored
-        runs, so a restart keeps the window."""
-        limits = self._base_settings.runtime_for_group(m.group_id, self._limits)
-        if limits.group_admit_max <= 0:
-            return False
-        since = now - limits.group_admit_window_minutes * 60
-        return self.store.admitted_runs(m.bot_id, m.group_id, since) >= limits.group_admit_max
+    def admission_window(self, group_id: str, now: float) -> GroupAdmissionWindow:
+        limits = self._base_settings.runtime_for_group(group_id, self._limits)
+        maximum, minutes = limits.group_admit_max, limits.group_admit_window_minutes
+        times = []
+        if maximum:
+            times = self.store.admitted_times(
+                self.settings.bot_id, group_id, now - minutes * 60, now
+            )
+        # If a hot reload lowered the limit, several old admissions may have to expire.
+        available = times[maximum - 1] + minutes * 60 if maximum and len(times) >= maximum else None
+        return GroupAdmissionWindow(maximum, minutes, len(times), now, available)
 
-    def _reject_rate_limited(self, run_id: str, request: ReplyRequest, now: float) -> str:
+    def _reject_rate_limited(
+        self, run_id: str, request: ReplyRequest, now: float, notice: str
+    ) -> str:
         m = request.message
         if not self.store.create_run(
             run_id, request.seq, m, state="rejected", cost_mode="normal", now=now,
@@ -437,18 +472,11 @@ class Orchestrator(RunFlow):
             run_id, now, detail=json.dumps({"config_revision": self.settings.revision})
         )
         self.counts["rejected_group_rate"] += 1
-        limits = self._base_settings.runtime_for_group(m.group_id, self._limits)
-        window = limits.group_admit_window_minutes * 60
-        last = self._admit_notices.get(m.group_id)
-        if last is None or now - last >= window:
-            self._admit_notices[m.group_id] = now
-            trace = OnlineTrace(run_id, m.message_id, m.group_id, m.user_id, self.now(), "normal", True)
-            trace.end(self.now(), "rejected_busy", "group_rate_limited")
-            task = asyncio.create_task(
-                self._publish(trace, m, GROUP_RATE_NOTICE_TEXT, "busy_notice", None)
-            )
-            self.tasks.append(task)
-            task.add_done_callback(self._notice_done)
+        trace = OnlineTrace(run_id, m.message_id, m.group_id, m.user_id, self.now(), "normal", True)
+        trace.end(self.now(), "rejected_busy", "group_rate_limited")
+        task = asyncio.create_task(self._publish(trace, m, notice, "busy_notice", None))
+        self.tasks.append(task)
+        task.add_done_callback(self._notice_done)
         return "rate_limited"
 
     def _notice_done(self, task: asyncio.Task) -> None:

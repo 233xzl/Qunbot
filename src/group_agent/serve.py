@@ -48,7 +48,6 @@ from .media import ImageSourcePolicy, MediaCollector
 from .orchestrator import TEACHING_PENDING_TEXT, Orchestrator
 from .owner_command import NewVersionCommand
 from .owner_control import OwnerControl, PauseState
-from .policy import COST_REJECTED
 from .reaction import ProcessingReaction
 from .retention import periodic_cleanup
 from .self_sync import SelfSync, default_snowluma_db
@@ -301,7 +300,7 @@ async def _run_serve(
 
     `reaction` (default: `settings.processing_reaction`, D-20) puts the "processing" emoji on
     each admitted request; the gateway issues its single reaction channel straight to
-    `reaction.ProcessingReaction`, which intake calls on admission.
+    `reaction.ProcessingReaction`, which the queue consumer calls after admission.
 
     `live_send` (default: `settings.live_send`, the cutover) sends every answer through
     `live_send.LiveSender`, which alone gets the gateway's answer channel; the owner's
@@ -416,7 +415,6 @@ async def _run_serve(
         ProcessingReaction(
             gateway.reaction_channel(settings.reaction_emoji_id),
             store,
-            should_react=lambda r: usage.cost_mode(r.is_owner, r.message.group_id) != COST_REJECTED,
             log=log,
         )
         if reaction
@@ -478,7 +476,6 @@ async def _run_serve(
         sink=queue,
         media=media,
         on_stored=backfill.schedule,
-        on_admitted=holder["reaction"].admitted if holder["reaction"] else None,
         control=(lambda m: holder["control"].classify(m)) if owner_control else None,
         paused=pause.is_paused,
     )
@@ -540,6 +537,7 @@ async def _run_serve(
         deliver=holder["live"].deliver if holder["live"] is not None else None,
         rate=orchestrator.rate,
         status_info=status_info,
+        group_status=lambda group, now: orchestrator.admission_window(group, now).status_text(),
         log=log,
     )
     stack.push_async_callback(holder["control"].aclose)
@@ -593,7 +591,11 @@ async def _run_serve(
 
     tasks = [
         asyncio.create_task(gateway.run(stop) if not offline else offline_wait(stop)),
-        asyncio.create_task(orchestrator.serve(queue, stop)),
+        asyncio.create_task(
+            orchestrator.serve(
+                queue, stop, holder["reaction"].on_admission if holder["reaction"] else None
+            )
+        ),
         asyncio.create_task(injector()),
         asyncio.create_task(stop_file_watch()),
     ]

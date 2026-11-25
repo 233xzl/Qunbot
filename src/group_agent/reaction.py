@@ -1,9 +1,7 @@
-"""D-20 "processing" reaction: a fixed emoji on each admitted reply request.
+"""One persistent reaction per request, selected after group and cost admission.
 
-`ProcessingReaction` is the only holder of the gateway's single `ReactionChannel`
-(`set_msg_emoji_like`, emoji id fixed at issue, `set` always true, rate-limited). Intake
-calls `admitted(request)` right after a fresh request was queued (`EventIntake.on_admitted`),
-before any scheduling or model call; the reaction then runs as its own task.
+The serve queue reports the outcome before model work starts. One narrow gateway channel
+sends the configured processing face or the rate-limited face for a fresh request.
 
 Checks before the action: the request must come from this process's intake (`admitted`),
 and the store must atomically grant the claim (`Store.claim_reaction`): a queued live
@@ -45,8 +43,12 @@ class ProcessingReaction:
         self.counts: Counter[str] = Counter()
         self._tasks: set[asyncio.Task] = set()
 
-    def admitted(self, request: ReplyRequest) -> None:
-        """Intake hook (synchronous, on the event loop): claim and schedule one reaction."""
+    def on_admission(self, request: ReplyRequest, outcome: str) -> None:
+        if outcome in ("started", "rate_limited"):
+            self.admitted(request, rate_limited=outcome == "rate_limited")
+
+    def admitted(self, request: ReplyRequest, *, rate_limited: bool = False) -> None:
+        """Claim a fresh queued request and schedule its reaction on the event loop."""
         if not isinstance(request, ReplyRequest):
             self.counts["refused_not_request"] += 1
             return
@@ -57,13 +59,13 @@ class ProcessingReaction:
         if not self._store.claim_reaction(*key, now=self.clock(), max_age_s=self.max_age_s):
             self.counts["refused_claim"] += 1
             return
-        task = asyncio.get_running_loop().create_task(self._react(key))
+        task = asyncio.get_running_loop().create_task(self._react(key, rate_limited))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
-    async def _react(self, key: tuple[str, str, str]) -> None:
+    async def _react(self, key: tuple[str, str, str], rate_limited: bool) -> None:
         try:
-            result = await self._channel.set_msg_emoji_like(key[2])
+            result = await self._channel.set_msg_emoji_like(key[2], rate_limited=rate_limited)
         except Exception as exc:  # noqa: BLE001 - never affects the run
             outcome = f"failed_{type(exc).__name__}"
         else:

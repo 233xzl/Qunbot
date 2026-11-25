@@ -242,7 +242,7 @@ finish_reserve_seconds = 30
 degrade_ratio = 0.9
 cap_ratio = 1.0
 # Per-group admission rate: at most group_admit_max requests per window (0 = no limit).
-# The owner is not limited; the group sees one notice per window.
+# Ordinary questions (including the owner) share the quota; each rejection gets a recovery time.
 group_admit_max = 0
 group_admit_window_minutes = 10
 

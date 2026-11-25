@@ -676,14 +676,16 @@ class Store:
         ).fetchone()
         return "answered" if sent else "open"
 
-    def admitted_runs(self, bot_id: str, group_id: str, since: float) -> int:
-        """Reply runs of a group created since `since` that were not rejected (the per-group
-        admission rate; cost-cap and rate-limited rejections do not count)."""
-        return self.con.execute(
-            "SELECT count(*) FROM runs WHERE bot_id=? AND group_id=? AND purpose='reply'"
-            " AND created_at>=? AND state<>'rejected'",
-            (bot_id, group_id, since),
-        ).fetchone()[0]
+    def admitted_times(self, bot_id: str, group_id: str, since: float, now: float) -> list[float]:
+        """Admission times in the rolling window (since, now], newest first."""
+        return [
+            row[0]
+            for row in self.con.execute(
+                "SELECT created_at FROM runs WHERE bot_id=? AND group_id=? AND purpose='reply'"
+                " AND state<>'rejected' AND created_at>? AND created_at<=? ORDER BY created_at DESC",
+                (bot_id, group_id, since, now),
+            )
+        ]
 
     def revoked_among(self, bot_id: str, group_id: str, message_ids) -> bool:
         """True when any of the messages was recalled or is no longer stored."""

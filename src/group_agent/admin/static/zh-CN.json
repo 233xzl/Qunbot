@@ -74,7 +74,7 @@
   "runtime.group_per_minute": "每群每分钟请求上限",
   "runtime.group_admit_max": "每群时段内最多受理的提问数",
   "runtime.group_admit_window_minutes": "受理计数时段（分钟）",
-  "help.runtime.group_admit_max": "填 0 不限制。超出后本时段不再回答普通成员，并在群里提示一次；主人不受限制。",
+  "help.runtime.group_admit_max": "填 0 不限制。达到上限后，每条新提问都会收到预计恢复时间。主人的普通提问也计入，控制命令单独处理。",
   "session.enabled": "群会话模式",
   "session.idle_minutes": "会话闲置后重开（分钟）",
   "session.max_tokens": "单段会话 token 上限",
