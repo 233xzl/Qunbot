@@ -741,6 +741,13 @@ function profileEditor() {
           `<label class="field">${esc(settingsText.label(["session", key]))}<input type="number" min="1" step="1" ${scoped("session", key)} value="${esc(profile.session?.[key] ?? "")}" placeholder="${esc(hint)}"></label>`,
         );
       }
+      const mode = profile.session?.compaction ?? "";
+      const baseMode = cfg.data.session?.compaction ?? cfg.schema.session.compaction.default;
+      const modeOpt = (v, text) =>
+        `<option value="${v}" ${mode === v ? "selected" : ""}>${esc(text)}</option>`;
+      fields.push(
+        `<label class="field">${esc(settingsText.label(["session", "compaction"]))}<select ${scoped("session", "compaction")}>${modeOpt("", `继承全局 · ${settingsText.t("option." + baseMode, baseMode)}`)}${settingsText.enums.compaction.map((v) => modeOpt(v, settingsText.t("option." + v, v))).join("")}</select></label>`,
+      );
     }
     for (const key of Object.keys(cfg.schema.prompts)) {
       const value = profile.prompts?.[key] || "";

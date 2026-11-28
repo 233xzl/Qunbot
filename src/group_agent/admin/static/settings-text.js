@@ -29,6 +29,7 @@ const settingsText = (() => {
     protocol: ["openai-responses", "google-genai", "openai-compatible", "anthropic"],
     price_currency: ["CNY", "USD"],
     search_provider: ["gemini", "deepseek"],
+    compaction: ["off", "recent"],
   };
   function key(path) {
     const parts = Array.isArray(path) ? [...path] : path.split(".");

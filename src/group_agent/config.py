@@ -61,16 +61,36 @@ class SessionSpec:
     """`[session]` table: per-group multi-turn answer sessions (`session.py`).
 
     Off by default. A session restarts after `idle_minutes` without a committed turn, once
-    its last request reached `max_tokens`, or `max_age_minutes` after it started."""
+    its last request reached `max_tokens`, or `max_age_minutes` after it started.
+
+    `compaction = "recent"` keeps an ongoing conversation going instead: when the length or
+    age limit is reached while the group is still active (within `idle_minutes`), the new
+    segment starts with the last `carry_turns` questions and answers (their quoted messages
+    and images) as text. While the previous turn is younger than `hot_seconds` (provider
+    cache still warm) the segment keeps growing up to `hard_max_tokens`. Idle groups still
+    start from nothing; older content is for the history tools."""
 
     enabled: bool = False
     idle_minutes: int = 20
     max_tokens: int = 8000
     max_age_minutes: int = 120
     max_new_messages: int = 40  # group messages added per turn (the most recent ones)
+    compaction: str = "off"  # off | recent
+    hard_max_tokens: int = 12000
+    hot_seconds: int = 180
+    carry_turns: int = 2
 
 
-SESSION_MINIMUMS = {"idle_minutes": 1, "max_tokens": 1000, "max_age_minutes": 1, "max_new_messages": 0}
+SESSION_MINIMUMS = {
+    "idle_minutes": 1,
+    "max_tokens": 1000,
+    "max_age_minutes": 1,
+    "max_new_messages": 0,
+    "hard_max_tokens": 1000,
+    "hot_seconds": 0,
+    "carry_turns": 1,
+}
+SESSION_COMPACTION = ("off", "recent")
 
 
 @dataclass(frozen=True)
@@ -524,11 +544,16 @@ def parse_session(table: dict, prefix: str, base: SessionSpec) -> SessionSpec:
     enabled = table.get("enabled", base.enabled)
     if type(enabled) is not bool:
         raise ConfigError(f"{prefix}.enabled: expected a boolean")
+    compaction = table.get("compaction", base.compaction)
+    if compaction not in SESSION_COMPACTION:
+        raise ConfigError(f"{prefix}.compaction: expected one of {', '.join(SESSION_COMPACTION)}")
     values = {
         key: _whole(table, key, getattr(base, key), prefix, minimum=minimum)
         for key, minimum in SESSION_MINIMUMS.items()
     }
-    return SessionSpec(enabled=enabled, **values)
+    if values["carry_turns"] > 5:
+        raise ConfigError(f"{prefix}.carry_turns: expected an integer 1..5")
+    return SessionSpec(enabled=enabled, compaction=compaction, **values)
 
 
 def _models(data: dict, usd_cny: float = BillingSpec().usd_cny) -> dict[str, ModelSpec]:

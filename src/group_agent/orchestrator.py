@@ -723,7 +723,11 @@ class Orchestrator(RunFlow):
         if row.get("state") not in ("sent", "recorded_not_sent"):
             return False
         return self.sessions.commit(
-            self.settings.bot_id, view, self.clock(), row.get("qq_message_id")
+            self.settings.bot_id,
+            view,
+            self.clock(),
+            row.get("qq_message_id"),
+            answer_text=row.get("text") or "",
         )
 
     # -- context ---------------------------------------------------------------------

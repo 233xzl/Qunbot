@@ -286,3 +286,126 @@ async def test_rolling_window_persists_across_restart_and_lowered_limit(tmp_path
     assert h.orch.admission_window("G1", full.available_at).available_at is None
     assert h.orch.admission_window("G2", start + 9).used == 0
     store.close()
+
+
+# -- compaction: an ongoing conversation is carried over, not cut ------------------------
+
+COMPACT = {"compaction": "recent", "max_tokens": 1000, "hard_max_tokens": 100_000}
+
+
+def cool(h, seconds=200):
+    h.orch.sessions.sessions[("BOT", "G1")].last_at -= seconds
+
+
+async def test_cool_long_segment_continues_with_the_last_questions_and_answers(tmp_path):
+    h, calls = session_harness(tmp_path, **COMPACT)
+    t = int(wall())
+    h.feed(ev("q1", user="U1", text="第一问", t=t))
+    await h.settle()
+    cool(h)
+    h.feed(ev("q2", user="U2", text="那第二个呢", t=t + 1))
+    await h.settle()
+    assert len(calls[-1]) == 1  # rebuilt: no model history is resent
+    text = prompt_text(calls[-1][0])
+    assert "接续前面的对话" in text
+    assert "[#m1] 群友A" in text and "第一问" in text  # same number and label as before
+    assert "机器人（你）" in text and "回答1" in text
+    assert "那第二个呢" in text
+    detail = session_detail(h, "q2")
+    assert detail["reason"] == "compacted_tokens" and detail["committed"] is True
+    live = json.loads(h.runs()["q2"]["detail"])["live"]
+    assert live["session_material"]["carried"] == 2
+    # The next turn continues the compacted segment normally.
+    h.feed(ev("q3", user="U1", text="第三问", t=t + 2))
+    await h.settle()
+    assert len(calls[-1]) == 3 and session_detail(h, "q3")["reason"] == "continued"
+
+
+async def test_warm_segment_grows_past_the_soft_limit(tmp_path):
+    h, calls = session_harness(tmp_path, **COMPACT)
+    t = int(wall())
+    h.feed(ev("q1", text="第一问", t=t))
+    await h.settle()
+    h.feed(ev("q2", text="第二问", t=t + 1))
+    await h.settle()
+    assert len(calls[-1]) == 3 and session_detail(h, "q2")["reason"] == "continued"
+
+
+async def test_hard_limit_compacts_even_while_warm(tmp_path):
+    h, calls = session_harness(tmp_path, **{**COMPACT, "hard_max_tokens": 1000})
+    t = int(wall())
+    h.feed(ev("q1", text="第一问", t=t))
+    await h.settle()
+    h.feed(ev("q2", text="第二问", t=t + 1))
+    await h.settle()
+    assert session_detail(h, "q2")["reason"] == "compacted_tokens"
+    assert "回答1" in prompt_text(calls[-1][0])
+
+
+@pytest.mark.parametrize("change", ["idle", "recall"])
+async def test_idle_or_recalled_conversations_still_start_empty(tmp_path, change):
+    h, calls = session_harness(tmp_path, **COMPACT)
+    t = int(wall())
+    h.feed(ev("q1", user="U1", text="第一问", t=t))
+    await h.settle()
+    if change == "idle":
+        cool(h, 21 * 60)
+    else:
+        cool(h)
+        h.feed(recall("q1", user="U1"))
+    h.feed(ev("q2", user="U2", text="第二问", t=t + 1))
+    await h.settle()
+    assert session_detail(h, "q2")["reason"] == ("idle" if change == "idle" else "invalid")
+    assert "接续前面的对话" not in prompt_text(calls[-1][0])
+    assert "回答1" not in prompt_text(calls[-1][0])
+
+
+async def test_chained_compaction_keeps_only_the_latest_turns(tmp_path):
+    h, calls = session_harness(tmp_path, **{**COMPACT, "carry_turns": 1})
+    t = int(wall())
+    for i in range(1, 4):
+        if i > 1:
+            cool(h)
+        h.feed(ev(f"q{i}", text=f"问题{i}号", t=t + i))
+        await h.settle()
+    text = prompt_text(calls[-1][0])
+    assert session_detail(h, "q3")["reason"] == "compacted_tokens"
+    assert "问题2号" in text and "回答2" in text
+    assert "问题1号" not in text and "回答1" not in text
+
+
+async def test_compaction_off_keeps_the_hard_cut(tmp_path):
+    h, calls = session_harness(tmp_path, max_tokens=1000)
+    t = int(wall())
+    h.feed(ev("q1", text="第一问", t=t))
+    await h.settle()
+    cool(h)
+    h.feed(ev("q2", text="第二问", t=t + 1))
+    await h.settle()
+    assert session_detail(h, "q2")["reason"] == "tokens"
+    assert "回答1" not in prompt_text(calls[-1][0])
+
+
+def test_carried_request_image_is_attached_before_other_context(tmp_path):
+    from group_agent.live_agent import render_material
+    from group_agent.session import SessionManager, Turn
+
+    (tmp_path / "a.png").write_bytes(b"x")
+    image = {"type": "image", "data": {"media_ref": {"status": "available", "path": "a.png"}}}
+    request = {"message_id": "r1", "user_id": "U1", "time": 100, "message": [image]}
+    other = {"message_id": "o1", "user_id": "U3", "time": 150, "message": [image]}
+    manager = SessionManager()
+    spec = SessionSpec(enabled=True, **{**COMPACT, "carry_turns": 2})
+    first = manager.begin("BOT", "G1", "k", spec, 0.0)
+    first.request, first.messages = request, ["turn"]
+    manager.commit("BOT", first, 1.0, "a1", answer_text="图里是一只猫")
+    manager.sessions[("BOT", "G1")].tokens = 5000
+    view = manager.begin("BOT", "G1", "k", spec, 500.0)
+    assert view.reason == "compacted_tokens" and len(view.carry) == 2
+    anchor = {"message_id": "q2", "user_id": "U2", "time": 200, "message": []}
+    text, attach, stats, _ = render_material(
+        [*view.carry, other], anchor, "BOT", tmp_path, max_images=1, session=view
+    )
+    assert "接续的最近问答" in stats["image_labels"]["图片1"]
+    assert "图里是一只猫" in text
+    assert isinstance(manager.sessions[("BOT", "G1")].turns[0], Turn)
