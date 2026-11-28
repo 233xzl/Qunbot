@@ -749,6 +749,19 @@ function profileEditor() {
         `<label class="field">${esc(settingsText.label(["session", "compaction"]))}<select ${scoped("session", "compaction")}>${modeOpt("", `继承全局 · ${settingsText.t("option." + baseMode, baseMode)}`)}${settingsText.enums.compaction.map((v) => modeOpt(v, settingsText.t("option." + v, v))).join("")}</select></label>`,
       );
     }
+    {
+      const inherited = cfg.data.archive?.enabled ?? cfg.schema.archive.enabled.default;
+      const value = profile.archive?.enabled;
+      const opt = (v, text) =>
+        `<option value="${v}" ${String(value ?? "") === v ? "selected" : ""}>${esc(text)}</option>`;
+      fields.push(
+        `<label class="field">${esc(settingsText.label(["archive", "enabled"]))}<select data-bool="1" ${scoped("archive", "enabled")}>${opt("", `继承全局 · ${inherited ? settingsText.t("common.on") : settingsText.t("common.off")}`)}${opt("true", settingsText.t("common.on"))}${opt("false", settingsText.t("common.off"))}</select></label>`,
+      );
+      const days = cfg.data.archive?.retention_days ?? cfg.schema.archive.retention_days.default;
+      fields.push(
+        `<label class="field">${esc(settingsText.label(["archive", "retention_days"]))}<input type="number" min="1" max="3650" step="1" ${scoped("archive", "retention_days")} value="${esc(profile.archive?.retention_days ?? "")}" placeholder="${esc(settingsText.t("group.inherit_value").replace("{value}", days))}"></label>`,
+      );
+    }
     for (const key of Object.keys(cfg.schema.prompts)) {
       const value = profile.prompts?.[key] || "";
       const inherited = cfg.prompts[key] || cfg.prompt_defaults[key] || "";
@@ -792,7 +805,7 @@ function bindProfiles() {
     (el) =>
       (el.onchange = () => {
         const { profile: gid, section, key } = el.dataset;
-        if ((section === "runtime" || section === "session") && !el.reportValidity()) {
+        if (["runtime", "session", "archive"].includes(section) && !el.reportValidity()) {
           el.value = cfg.data.group_profiles?.[gid]?.[section]?.[key] ?? "";
           return;
         }
@@ -803,7 +816,7 @@ function bindProfiles() {
         else if (el.dataset.bool) target[key] = el.value === "true";
         else if (el.type === "number") target[key] = Number(el.value);
         else target[key] = el.value;
-        if ((section === "runtime" || section === "session") && !Object.keys(target).length)
+        if (["runtime", "session", "archive"].includes(section) && !Object.keys(target).length)
           delete profile[section];
         changed();
         if (key === "enabled") renderEditor();
@@ -847,6 +860,7 @@ function renderEditor() {
       ]) +
       section("runtime", "运行策略") +
       section("session", "群会话") +
+      section("archive", "群聊归档") +
       section("agent", "回答策略") +
       section("serve", "QQ 与发送策略") +
       section("collection", "消息与媒体采集");

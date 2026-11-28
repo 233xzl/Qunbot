@@ -59,6 +59,7 @@ IMMEDIATE = {
     "blocked_groups",
     "web_enabled",
     "live_send",
+    "archive",
 }
 NEXT_RUN = {
     "group_profiles",
@@ -168,12 +169,24 @@ class ServeSession:
 
         if self.orchestrator.active:
             return {"skipped_active": len(self.orchestrator.active)}
-        return run_cleanup(
+        report = run_cleanup(
             self.orchestrator.store,
             self.settings.retention,
             media_root=self.media_root,
             dry_run=dry_run,
         )
+        from .archive import prune
+
+        # The archive keeps its own, per-group retention (also while switched off).
+        archived = prune(
+            self.orchestrator.store.con,
+            time.time(),
+            self.orchestrator.archive_retention,
+            dry_run=dry_run,
+        )
+        if archived:
+            report["archive"] = archived
+        return report
 
     def owner_call(self):
         from .runflow import CURRENT_RUN

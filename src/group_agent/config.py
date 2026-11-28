@@ -94,6 +94,26 @@ SESSION_COMPACTION = ("off", "recent")
 
 
 @dataclass(frozen=True)
+class ArchiveSpec:
+    """`[archive]` table: the text archive of group chat (`archive.py`) and its tools.
+
+    Off by default. When on, every chat message of a group (except blocked users, blocked
+    groups and groups without ordinary collection) is kept as plain text for
+    `retention_days`; recalled messages are deleted. The answer model may search it with
+    `grep_group_history` / `read_group_history`, at most `searches` / `reads` times per
+    request. Groups override `enabled` and `retention_days` in `group_profiles.<id>.archive`."""
+
+    enabled: bool = False
+    retention_days: int = 180
+    searches: int = 3
+    reads: int = 5
+
+
+ARCHIVE_MINIMUMS = {"retention_days": 1, "searches": 0, "reads": 0}
+ARCHIVE_GROUP_KEYS = {"enabled", "retention_days"}
+
+
+@dataclass(frozen=True)
 class Settings:
     bot_id: str = "BOT"
     owner_id: str | None = "OWNER"
@@ -148,6 +168,7 @@ class Settings:
     billing: "BillingSpec" = field(default_factory=lambda: BillingSpec())
     runtime: RuntimeLimits = field(default_factory=RuntimeLimits)
     session: SessionSpec = field(default_factory=SessionSpec)
+    archive: ArchiveSpec = field(default_factory=ArchiveSpec)
     prompts: dict[str, str] = field(default_factory=dict, repr=False)
     group_profiles: dict = field(default_factory=dict, repr=False)
     credential_refs: dict = field(default_factory=dict, repr=False)
@@ -182,6 +203,13 @@ class Settings:
         profile = self.group_profiles.get(group_id, {})
         overrides = profile.get("session") if profile.get("enabled") else None
         return replace(self.session, **overrides) if overrides else self.session
+
+    def archive_for_group(self, group_id) -> ArchiveSpec:
+        from dataclasses import replace
+
+        profile = self.group_profiles.get(group_id, {})
+        overrides = profile.get("archive") if profile.get("enabled") else None
+        return replace(self.archive, **overrides) if overrides else self.archive
 
     def for_group(self, group_id):
         from dataclasses import replace
@@ -556,6 +584,25 @@ def parse_session(table: dict, prefix: str, base: SessionSpec) -> SessionSpec:
     return SessionSpec(enabled=enabled, compaction=compaction, **values)
 
 
+def parse_archive(table: dict, prefix: str, base: ArchiveSpec, keys=None) -> ArchiveSpec:
+    """`[archive]` or a group's `archive` override (`keys` = the fields it may set)."""
+    if not isinstance(table, dict):
+        raise ConfigError(f"{prefix}: expected a table")
+    for key in table:
+        if key not in (keys or ArchiveSpec.__dataclass_fields__):
+            raise ConfigError(f"{prefix}.{key}: unknown field")
+    enabled = table.get("enabled", base.enabled)
+    if type(enabled) is not bool:
+        raise ConfigError(f"{prefix}.enabled: expected a boolean")
+    values = {
+        key: _whole(table, key, getattr(base, key), prefix, minimum=minimum, maximum=3650)
+        for key, minimum in ARCHIVE_MINIMUMS.items()
+    }
+    if values["searches"] > 10 or values["reads"] > 10:
+        raise ConfigError(f"{prefix}.searches: expected at most 10 searches and 10 reads")
+    return ArchiveSpec(enabled=enabled, **values)
+
+
 def _models(data: dict, usd_cny: float = BillingSpec().usd_cny) -> dict[str, ModelSpec]:
     specs = {}
     for name, table in _table(data, "models").items():
@@ -830,6 +877,7 @@ def parse_settings(data: dict, path: Path) -> Settings:
     if limits.group_admit_max and limits.group_admit_window_minutes < 1:
         raise ConfigError("runtime.group_admit_window_minutes: expected at least 1")
     session = parse_session(_table(data, "session"), "session", SessionSpec())
+    archive = parse_archive(_table(data, "archive"), "archive", ArchiveSpec())
     identity, budgets, retention = (_table(data, n) for n in ("identity", "budgets", "retention"))
     r = Retention(
         **{
@@ -965,6 +1013,7 @@ def parse_settings(data: dict, path: Path) -> Settings:
         billing=billing,
         runtime=limits,
         session=session,
+        archive=archive,
         prompts=data.get("_prompt_text", {}),
         credential_refs=data.get("credentials", {}),
     )

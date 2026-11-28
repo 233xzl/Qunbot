@@ -23,12 +23,15 @@ from .config import (
     ModelSpec,
     Retention,
     SessionSpec,
+    ArchiveSpec,
+    ARCHIVE_GROUP_KEYS,
     Settings,
     WebSpec,
     MODELS_SCALARS,
     GROUP_RUNTIME_KEYS,
     _whole,
     parse_session,
+    parse_archive,
     parse_settings,
 )
 from .policy import RuntimeLimits
@@ -81,6 +84,7 @@ GROUPS = {
     "billing": set(BillingSpec.__dataclass_fields__),
     "web": set(WebSpec.__dataclass_fields__),
     "session": set(SessionSpec.__dataclass_fields__),
+    "archive": set(ArchiveSpec.__dataclass_fields__),
     "runtime": set(RuntimeLimits.__dataclass_fields__)
     - {"deadline_seconds", "context_messages", "moderation_threshold", "retention_days"},
     "model_roles": {"answer", "decision", "fallback"},
@@ -173,7 +177,7 @@ def validate_keys(data):
         path = f"group_profiles.{gid}"
         _keys(
             profile,
-            {"enabled", "prompts", "model_roles", "daily_cost_cny", "runtime", "session"},
+            {"enabled", "prompts", "model_roles", "daily_cost_cny", "runtime", "session", "archive"},
             path,
         )
         runtime = profile.get("runtime", {})
@@ -183,6 +187,7 @@ def validate_keys(data):
         if runtime.get("group_admit_window_minutes") == 0:
             raise ConfigError(f"{path}.runtime.group_admit_window_minutes: expected at least 1")
         parse_session(profile.get("session", {}), f"{path}.session", SessionSpec())
+        parse_archive(profile.get("archive", {}), f"{path}.archive", ArchiveSpec(), ARCHIVE_GROUP_KEYS)
         if type(profile.get("enabled", False)) is not bool:
             raise ConfigError(f"{path}.enabled: expected a boolean")
         cap = profile.get("daily_cost_cny", 1)
@@ -393,6 +398,8 @@ def build_bundle(data: dict, path: Path, overrides=None) -> ConfigBundle:
     # Fields added after 0.2.0 leave the digest of revisions that keep their defaults alone.
     if effective_data["session"] == plain(SessionSpec()):
         effective_data.pop("session")
+    if effective_data["archive"] == plain(ArchiveSpec()):
+        effective_data.pop("archive")
     for key, default in LATE_RUNTIME_DEFAULTS.items():
         if effective_data["runtime"].get(key) == default:
             effective_data["runtime"].pop(key)
@@ -481,6 +488,8 @@ def field_application(group, key):
         return "immediate" if key in IMMEDIATE_RUNTIME else "new_run"
     if group == "retention":
         return "next_cleanup"
+    if group == "archive":
+        return "immediate"
     if group == "collection" and key == "disabled_groups":
         return "immediate"
     if group == "serve" and key == "fallback_reply":
@@ -504,6 +513,7 @@ def schema():
         "billing": plain(defaults.billing),
         "web": plain(defaults.web),
         "session": plain(defaults.session),
+        "archive": plain(defaults.archive),
         "agent": {k: getattr(defaults, k) for k in GROUPS["agent"]},
         "serve": {k: getattr(defaults, {"db_path": "serve_db"}.get(k, k)) for k in GROUPS["serve"]},
         "shadow": {"db_path": defaults.shadow_db},
@@ -516,6 +526,7 @@ def schema():
         "billing": BillingSpec,
         "web": WebSpec,
         "session": SessionSpec,
+        "archive": ArchiveSpec,
     }
     result = {}
     for group, keys in GROUPS.items():

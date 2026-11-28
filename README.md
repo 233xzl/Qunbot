@@ -2,7 +2,7 @@
 
 Qunbot 是一个 QQ 群聊机器人后端。SnowLuma 通过 OneBot 提供消息连接，Qunbot 负责群聊上下文、模型调用、搜索、显式教学和回复发送。每个群可以继承全局配置，也可以单独指定人设、模型和每日预算。
 
-当前包版本为 **0.3.0**。下载和升级步骤见下文，各版本变化见[更新日志](CHANGELOG.md)。运行 `uv run --locked qunbot --version` 可查看本地版本号。
+当前包版本为 **0.4.0**。下载和升级步骤见下文，各版本变化见[更新日志](CHANGELOG.md)。运行 `uv run --locked qunbot --version` 可查看本地版本号。
 
 ## 一条命令部署 WebUI
 
@@ -56,7 +56,15 @@ Windows 安装完成后，可用仓库内的 `.\qunbot.cmd` 代替 `uv run qunbo
 2. 在首次配置中填写机器人和主人 QQ 号。在“系统设置 → 更新管理型凭据”填写 `SNOWLUMA_WS_URL` 和 `SNOWLUMA_WS_TOKEN`。地址使用 `ws://127.0.0.1:端口` 加 SnowLuma 配置的路径，令牌只填值。管理台登录密钥和网关令牌各自独立。
 3. 配置回答、判断和备用模型及其供应商凭据，并按需配置搜索。保存并应用配置，点击“启动 Agent”，在总览确认“SnowLuma 已连接”。正式模式的作者预设启用“发送群聊回复”。启动前检查访问规则，启动后在允许的群里直接 @ 机器人。
 
-正常接入只需网关连接。需要额外从 SnowLuma 的消息库同步机器人自己的历史时，再设置 `serve.snowluma_db` 并开启 `serve.self_sync`。分群人设、模型和预算在“群个性化”配置。详见[管理台手册](docs/ADMIN-UI.md)和[配置说明](docs/CONFIGURATION.md)。
+正常接入只需网关连接。需要额外从 SnowLuma 的消息库同步机器人自己的历史时，再设置 `serve.snowluma_db` 并开启 `serve.self_sync`。
+
+需要机器人记得更早的群聊时，在“运行策略 → 群聊归档”开启归档（默认关闭；开启前告知群成员，聊天文字会保存数月）。回答时它可以搜索本群更早的发言。已有的 SnowLuma 历史可以一次导入，`archive stats` 查看各群条数，`archive clear` 按成员或日期清除：
+
+```powershell
+.\qunbot.cmd archive import --instance data/production --dry-run
+.\qunbot.cmd archive import --instance data/production
+```
+分群人设、模型和预算在“群个性化”配置。详见[管理台手册](docs/ADMIN-UI.md)和[配置说明](docs/CONFIGURATION.md)。
 
 无人值守前台运行可使用 `uv run qunbot --serve --settings data/my-agent/config-history`，由宿主的服务管理器处理进程重启。管理台模式和前台模式一次只运行一个引擎。`group-agent` 保留为兼容命令，Python 导入名为 `group_agent`。
 

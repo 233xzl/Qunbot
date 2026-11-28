@@ -28,6 +28,7 @@ CLI 发布的版本在下次受控启动时采用。管理台支持在线应用�
 | `prompts` | persona、evidence、reply_contract、decision、tool_decision、search 的文件路径 | `prompt_options`、模型调用、搜索客户端 |
 | `budgets` | 总期限 120 秒、上下文上限 80 条、每日普通用户上限 ¥3 | Settings.limits / RunFlow / UsageLedger |
 | `runtime` | 全局/用户并发 4/2、队列 32/4、3 搜 5 读、工具超时 25 秒、结束预留 30 秒、80%/100% 闸门；每群受理频率 `group_admit_max` / `group_admit_window_minutes`（默认不限、10 分钟） | 调度、发送限速、工具预算、每日预算判断、受理频率 |
+| `archive` | 群聊文字归档，默认关闭；保留 180 天，每次提问最多搜索 3 次、读取 5 次 | 消息入库、`archive.HistoryTools`、清理计划 |
 | `session` | 群会话模式，默认关闭；闲置 20 分钟、上一轮 8,000 token 或满 120 分钟后重开一段；每轮最多带入 40 条新群消息 | LiveAgent 回答请求、`session.SessionManager` |
 | `collection` / `retention` | 采集、媒体下载；24 小时普通消息、7 天关联消息、2 GB 媒体 | MediaCollector / 清理计划与执行 |
 | `serve` / `shadow` / `knowledge` | 数据路径、发送、自同步、失败回复、表情与主人控制 | 运行入口、各业务存储 |
@@ -45,6 +46,10 @@ CLI 发布的版本在下次受控启动时采用。管理台支持在线应用�
 **群会话。** 开启后，同一群的连续提问接在同一段多轮对话里：每次提问追加一轮，内容是上一轮之后的新群消息和本次提问；模型上一轮的回复原样保留。群友标签和 `#m<n>` 编号在一段内固定。回答发出（或在仅记录模式下记录）后才接入会话；失败、取消、未发送和备用模型的回答不接入。同时进行的提问从同一轮继续，只有最先发出的接入。撤回段内消息、屏蔽段内发言人、更换回答模型、人设或工具时开新段。会话保存在内存中，重启后重新开始。群个性化可在 `group_profiles.<群号>.session` 中覆盖 `enabled`、`idle_minutes` 等字段。
 
 会话让回答口径更一致，也让供应商的隐式前缀缓存可以命中；但请求比无状态请求长，总费用通常会增加。以 Gemini 4 Hydrogen 为例，续接时上一轮请求除最后约 2k token 外可以命中缓存，缓存约 2–3 分钟后失效。
+
+**群聊归档。** `archive.enabled` 开启后，群里每条聊天消息的文字另存一份（图片、表情、卡片、转发只记占位，单条最多 500 字），保留 `retention_days` 天（默认 180），与 `retention` 的消息保留规则互不影响。屏蔽用户、屏蔽群和关闭普通采集的群不归档；撤回的消息从归档删除。关闭归档后停止记录和检索，已有内容按保留期在清理时删除；要立即清除指定成员或日期之后的内容，使用 `qunbot archive clear --instance <实例> --group <群号> --user <QQ号>` 或 `--since YYYY-MM-DD`。开启后，回答模型可以调用两个工具：`grep_group_history` 按 1–5 个关键词（每个至少 2 字，全部或任一匹配）、发言人和日期搜索，新的在前，返回命中总数和最早可查日期；`read_group_history` 读取某条结果前后各最多 10 条。两者只查本群、只查当前提问之前，按查询时的屏蔽名单过滤，发言人用材料中的群友代称，账号数字被遮盖，机器人以前的回答标为“不是证据”。每次提问最多搜索 `searches` 次、读取 `reads` 次，单次结果约 1.5k token。群个性化可在 `group_profiles.<群号>.archive` 中覆盖 `enabled` 和 `retention_days`。
+
+已有的 SnowLuma 历史可一次导入：`qunbot archive import --instance <实例>`（加 `--dry-run` 只统计）。导入经 SQLite 备份接口复制 SnowLuma 的 `messages.db`，在副本上读取，按群号和消息号去重，跳过未开启归档的群、屏蔽成员、超过保留期的消息和消息库中已记录为撤回的消息，运行中的服务不受影响。SnowLuma 不记录群消息撤回，Qunbot 开始记录之前被撤回的消息无法识别，导入后可用 `archive clear` 删除。
 
 **连续对话接续。** `session.compaction` 默认为 `off`：一段达到 `max_tokens` 或 `max_age_minutes` 后，下一次提问从零开始。设为 `recent` 后，只要群里的对话仍在进行（距上一轮不超过 `idle_minutes`），达到上限时不再从零开始：新的一段先带上最近 `carry_turns` 轮（默认 2）的提问、已发出的回答、被引用的消息和仍可读取的图片，群友标签和编号保持不变，然后照常往后接。这部分由程序整理，不额外调用模型。距上一轮不超过 `hot_seconds`（默认 180 秒）时缓存仍有效，会话可以越过 `max_tokens` 继续增长，直到 `hard_max_tokens`（默认 12000）才整理。闲置超过 `idle_minutes`、撤回或屏蔽段内消息、配置变化时，仍从零开始。
 

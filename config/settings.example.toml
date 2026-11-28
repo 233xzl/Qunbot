@@ -262,3 +262,16 @@ compaction = "off"
 hard_max_tokens = 12000
 hot_seconds = 180
 carry_turns = 2
+
+# Text archive of group chat: plain text only (media and cards as placeholders), kept for
+# retention_days; recalled messages are deleted, blocked members and groups without
+# ordinary collection are never archived. The answer model can search it with
+# grep_group_history / read_group_history (searches / reads per request). Off by default:
+# turning it on keeps members' chat for months; tell your group. Groups override enabled
+# and retention_days in group_profiles.<id>.archive. Fill it once from SnowLuma with
+# "qunbot archive import --instance <dir>".
+[archive]
+enabled = false
+retention_days = 180
+searches = 3
+reads = 5

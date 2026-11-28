@@ -10,7 +10,18 @@ from .contracts import Message
 
 from . import received_groups
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
+# v13 -> v14: the plain-text group chat archive (`archive.py`), a table of its own with its
+# own retention; nothing else references it.
+ARCHIVE_DDL = """
+CREATE TABLE IF NOT EXISTS archive (
+    bot_id TEXT NOT NULL, group_id TEXT NOT NULL, message_id TEXT NOT NULL,
+    user_id TEXT NOT NULL, time INTEGER NOT NULL, reply_to TEXT, text TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'live' CHECK(source IN ('live', 'backfill', 'self_sync', 'import')),
+    PRIMARY KEY(bot_id, group_id, message_id)
+);
+CREATE INDEX IF NOT EXISTS archive_group_time ON archive(bot_id, group_id, time);
+"""
 # Where a stored message came from: a pushed event ("live"), a get_msg lookup for a
 # referenced message that was missing locally ("backfill"; never a reply trigger), or the
 # read-only sync of the bot account's own messages from SnowLuma's message store
@@ -178,6 +189,7 @@ CREATE TABLE IF NOT EXISTS control_events (
     UNIQUE(bot_id, group_id, message_id)
 );
 """
+    + ARCHIVE_DDL
 )
 # v1 -> v2: keep platform time and local receive time for ordering, retention and shadow checks.
 MIGRATE_1_TO_2 = """
@@ -224,6 +236,7 @@ MIGRATIONS = {
     10: "",
     11: "",
     12: "",
+    13: "",
     SCHEMA_VERSION: "",
 }
 # v9 -> v10 (owner remote control): new tables `control_state` / `control_events` (SCHEMA);
@@ -286,6 +299,12 @@ INSERT INTO outbound(run_id, bot_id, group_id, reply_to, requester, text, state,
 DROP TABLE _runs_v4;
 DROP TABLE _outbound_v4;
 """
+)
+
+
+ARCHIVE_INSERT = (
+    "INSERT OR IGNORE INTO archive(bot_id,group_id,message_id,user_id,time,reply_to,text,source)"
+    " VALUES (?,?,?,?,?,?,?,?)"
 )
 
 
@@ -372,6 +391,8 @@ class Store:
             self.con.close()
             raise
         self.con.execute("PRAGMA foreign_keys=ON")
+        # (bot, group, user) -> archive this chat message (`archive.py`); None = never.
+        self.archive_policy = None
 
     def allows_group_reply(self, bot, group, seq=None):
         return received_groups.allows(self.con, bot, group, seq)
@@ -405,6 +426,14 @@ class Store:
         fresh = cursor.rowcount == 1
         if fresh and source == "live" and message.user_id != message.bot_id:
             received_groups.observe(self.con, message.bot_id, message.group_id, received_at)
+        policy = self.archive_policy
+        if fresh and kind == "chat" and policy is not None:
+            if policy(message.bot_id, message.group_id, message.user_id):
+                from .archive import archive_row
+
+                row = archive_row(message, platform_time, received_at, source)
+                if row is not None:
+                    self.con.execute(ARCHIVE_INSERT, row)
         row = self.con.execute(
             "SELECT seq FROM messages WHERE bot_id=? AND group_id=? AND message_id=?",
             (message.bot_id, message.group_id, message.message_id),
@@ -539,6 +568,10 @@ class Store:
             arrived first (a placeholder blocks later insertion), "duplicate" otherwise.
         """
         with self.con:
+            self.con.execute(
+                "DELETE FROM archive WHERE bot_id=? AND group_id=? AND message_id=?",
+                (bot_id, group_id, message_id),
+            )
             cursor = self.con.execute(
                 "UPDATE messages SET revoked=1, segments='[]'"
                 " WHERE bot_id=? AND group_id=? AND message_id=? AND revoked=0",

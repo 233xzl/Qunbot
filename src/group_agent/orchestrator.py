@@ -267,6 +267,7 @@ class Orchestrator(RunFlow):
         # Per-group answer sessions (`session.py`) and the last admission-limit notice
         # per group (one per window).
         self.sessions = SessionManager()
+        store.archive_policy = self.archive_allowed  # `archive.py`
         self.interrupted = store.interrupt_active_runs(clock())
         self.agent = agent_factory(self)
 
@@ -675,6 +676,47 @@ class Orchestrator(RunFlow):
         except Exception as exc:
             self.counts["persist_errors"] += 1
             self.log(f"run detail write failed: {type(exc).__name__}")
+
+    # -- text archive (`archive.py`) --------------------------------------------------
+    def archive_allowed(self, bot_id: str, group_id: str, user_id: str) -> bool:
+        """Archive a chat message: archive on for the group, the group not blocked and
+        collecting ordinary messages, the author not blocked."""
+        if not self._base_settings.archive_for_group(group_id).enabled:
+            return False
+        snap = self.access.snapshot
+        return not (
+            group_id in snap.blocked_groups
+            or group_id in snap.collection_off_groups
+            or user_id in snap.blocked_users
+        )
+
+    def history_tools(self, trace: RunTrace, labels: dict):
+        """The run's history tools (`archive.HistoryTools`), or None when the group's
+        archive is off. Bound to the run's group and to messages before the request."""
+        spec = self._base_settings.archive_for_group(trace.group_id)
+        if not spec.enabled or not (spec.searches or spec.reads):
+            return None
+        snap = self.access.snapshot
+        if trace.group_id in snap.blocked_groups or trace.group_id in snap.collection_off_groups:
+            return None
+        found = self.store.lookup(snap.bot_id, trace.group_id, trace.message_id) or {}
+        before = found.get("platform_time") or found.get("received_at") or self.clock()
+        from .archive import HistoryTools
+
+        return HistoryTools(
+            self.store.con,
+            snap.bot_id,
+            trace.group_id,
+            trace.user_id,
+            before,
+            labels,
+            lambda: self.access.snapshot.blocked_users,
+            searches=spec.searches,
+            reads=spec.reads,
+        )
+
+    def archive_retention(self, group_id: str) -> int:
+        return self._base_settings.archive_for_group(group_id).retention_days
 
     # -- group sessions (`session.py`) ------------------------------------------------
     def session_spec(self, trace: RunTrace):

@@ -291,6 +291,10 @@ def main(argv=None) -> int:
         from .config_cli import main as config_main
 
         return config_main(argv[1:])
+    if argv and argv[0] == "archive":
+        from .archive_cli import main as archive_main
+
+        return archive_main(argv[1:])
     from . import __version__
 
     parser = argparse.ArgumentParser(description="Qunbot QQ group chat backend")
