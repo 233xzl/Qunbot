@@ -1,5 +1,5 @@
-"""Read-only self-sync of the bot's own messages (self_sync.py) and the owner's `#新版`
-command messages kept out of context (kind='owner_command').
+"""Read-only self-sync of the bot's own messages (self_sync.py) and owner command
+messages kept out of context (kind='owner_command').
 
 The SnowLuma side is a temporary SQLite file with the minimal subset of SnowLuma's
 `messages` table that the sync reads (PRAGMA table_info of the real store: is_group,
@@ -13,8 +13,6 @@ import time
 
 import pytest
 from test_orchestrator import BASE, Harness, ev, virtual, wall
-from test_owner_command import H, command
-from test_owner_command import ev as oev
 
 from group_agent.app import main as app_main
 from group_agent.config import Retention, load_settings
@@ -283,41 +281,29 @@ def test_strategy_c_continues_with_the_old_bots_synced_answer(tmp_path):
     assert h.store.lookup("BOT", GROUP, "a1")["source"] == "self_sync"
 
 
-# -- owner `#新版` command messages are not context ----------------------------------------
+# -- owner command messages are not context ---------------------------------------------------
 
 
-def test_owner_command_message_is_excluded_from_context_and_related_set():
-    async def main():
-        h = H(send=False)
-        h.feed(oev("q0", user="U2", text="原帖", at=False, t=BASE))
-        assert h.feed(command("c1", "q0", t=BASE + 5)) == "scheduled"
-        assert h.feed(command("n1", "q0", user="U3", t=BASE + 6)) == "ignored_not_owner"
-        h.feed(oev("q2", user="U1", text="这是什么意思", reply="c1", t=BASE + 10))
-        h.feed(oev("q3", user="U1", text="那这个呢", reply="n1", t=BASE + 20))
-        await h.settle()
-        return h
-
-    h = virtual(main)
-    store = h.store
-    kinds = dict(store.con.execute("SELECT message_id, kind FROM messages").fetchall())
-    assert kinds["c1"] == "owner_command" and kinds["n1"] == "chat"
-    runs = {r["message_id"]: r["run_id"] for r in store.con.execute("SELECT * FROM runs")}
-    assert "c1" not in store.context_snapshot(runs["q2"])["message_ids"]
-    assert "n1" in store.context_snapshot(runs["q3"])["message_ids"]  # non-owner: ordinary
-    q3_seq = store.lookup("BOT", "G1", "q3")["seq"]
-    q3 = Message("BOT", "G1", "q3", "U1", ())
+def test_owner_command_message_is_excluded_from_history_and_related_set():
+    store = Store()
+    q0 = Message("BOT", "G1", "q0", "U2", ({"type": "text", "data": {"text": "原帖"}},))
+    c1 = Message("BOT", "G1", "c1", "OWNER", ({"type": "text", "data": {"text": "#暂停"}},))
+    n1 = Message("BOT", "G1", "n1", "U3", ({"type": "text", "data": {"text": "#暂停"}},))
+    store.ingest(q0, BASE, BASE)
+    c1_seq, _ = store.ingest(c1, BASE + 5, BASE + 5, kind="owner_command")
+    n1_seq, _ = store.ingest(n1, BASE + 6, BASE + 6)
+    q3 = Message("BOT", "G1", "q3", "U1", ({"type": "text", "data": {"text": "那这个呢"}},))
+    q3_seq, _ = store.ingest(q3, BASE + 20, BASE + 20)
     history = [m.message_id for m in store.history(q3, q3_seq)]
     assert "c1" not in history and "n1" in history
-    # Retention: not related through a quote (q2) or a context mark; only through the
-    # anchor mark of its own new_version run.
-    c1 = store.lookup("BOT", "G1", "c1")["seq"]
-    n1 = store.lookup("BOT", "G1", "n1")["seq"]
-    store.con.execute("DELETE FROM related_marks WHERE seq=?", (c1,))
-    store.mark_related(store.lookup("BOT", "G1", "q2")["seq"], [c1], "context")
+    # Retention: a command is not related through a context mark; a `#新版` command of an
+    # earlier release stays related only as the anchor of its own run.
+    store.mark_related(q3_seq, [c1_seq, n1_seq], "context")
     related = related_set(store, Retention())
-    assert c1 not in related and n1 in related
-    store.mark_related(store.lookup("BOT", "G1", "q0")["seq"], [c1], "new_version_command")
-    assert c1 in related_set(store, Retention())
+    assert c1_seq not in related and n1_seq in related
+    store.con.execute("DELETE FROM related_marks WHERE seq=?", (c1_seq,))
+    store.mark_related(q3_seq, [c1_seq], "new_version_command")
+    assert c1_seq in related_set(store, Retention())
 
 
 # -- settings / CLI ----------------------------------------------------------------------------
@@ -334,8 +320,7 @@ def test_serve_settings_and_flags(tmp_path):
     s = load_settings(path)
     assert (s.self_sync, s.self_sync_interval_s) == (False, 2.5)
     assert s.snowluma_db == (tmp_path / "sl" / "messages.db").resolve()
-    for argv in (["--no-owner-send"], ["--no-self-sync"]):
-        with pytest.raises(SystemExit):
-            app_main(argv)  # serve-only flags
     with pytest.raises(SystemExit):
-        app_main(["--serve", "--allow-owner-send", "--no-owner-send"])
+        app_main(["--no-self-sync"])  # serve-only flag
+    with pytest.raises(SystemExit):
+        app_main(["--serve", "--allow-owner-send"])  # retired with the `#新版` command

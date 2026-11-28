@@ -22,9 +22,9 @@ strategy C, pre-publish checks, send-rate limits). The online-specific parts are
   (record only, the default) or, with a `publisher` hook (serve with `[serve] live_send`,
   the cutover), handed over by run id: the hook (the answer sender's `deliver`, see
   `live_send.py`) re-checks the row and sends it. This module never calls the gateway and holds no channel; the
-  hook only accepts the id of a row this flow wrote. The owner's `#新版` path (D-19,
-  `owner_command.py`) gets answers from `generate_for` (a `new_version` run whose answer is
-  handed back instead of being recorded) and writes its own outbound rows.
+  hook only accepts the id of a row this flow wrote. Offline regeneration
+  (`scripts/replay_shadow.py`) gets answers from `generate_for` (a `new_version` run whose
+  answer is handed back instead of being recorded).
 """
 
 from __future__ import annotations
@@ -260,8 +260,8 @@ class Orchestrator(RunFlow):
         self.events_by_key: _Lru = _Lru(8192)
         self.active: dict[str, tuple[OnlineTrace, Message]] = {}
         self.counts: Counter[str] = Counter()
-        # D-19 regenerations: run id -> future receiving the answer text instead of an
-        # outbound row (the caller, owner_command.NewVersionCommand, publishes it).
+        # Regenerations (`generate_for`): run id -> future receiving the answer text instead
+        # of an outbound row.
         self._captures: dict[str, asyncio.Future] = {}
         self._settings_cache: tuple[int, Settings] | None = None
         # Per-group answer sessions (`session.py`) and the last admission-limit notice
@@ -492,7 +492,7 @@ class Orchestrator(RunFlow):
     async def generate_for(
         self, question: Message, question_seq: int, *, run_seq: int
     ) -> tuple[str | None, str | None]:
-        """D-19 regeneration for the owner's `#新版` command: one `new_version` run that
+        """Regeneration (`scripts/replay_shadow.py`): one `new_version` run that
         answers `question` with the context cut at the question (`question_seq` is the run
         boundary), billed to the usage ledger and gated as the owner's request (served at
         >= 100 % of the daily cap). The answer is returned, not recorded or sent.
@@ -556,7 +556,7 @@ class Orchestrator(RunFlow):
     def cancel_replies(self, reason: str) -> int:
         """Cancel every active reply run (remote pause); a frame already being written
         finishes (the send hook shields it) and pending outbound rows end failed.
-        The owner's `#新版` regenerations are not touched. Returns the number cancelled."""
+        Regenerations are not touched. Returns the number cancelled."""
         cancelled = 0
         for run_id in list(self.active):
             if run_id not in self._captures:
@@ -720,7 +720,7 @@ class Orchestrator(RunFlow):
 
     # -- group sessions (`session.py`) ------------------------------------------------
     def session_spec(self, trace: RunTrace):
-        """The session settings of the run's group; None for the owner's `#新版`."""
+        """The session settings of the run's group; None for a regeneration."""
         if trace.run_id in self._captures:
             return None
         return self._base_settings.session_for_group(trace.group_id)
@@ -1070,7 +1070,7 @@ class Orchestrator(RunFlow):
         if row is None or row["revoked"]:
             return "request_recalled"
         is_owner = s.owner_id is not None and trace.user_id == s.owner_id
-        is_owner = is_owner or trace.run_id in self._captures  # the owner's `#新版`
+        is_owner = is_owner or trace.run_id in self._captures  # a regeneration
         mode, scope = self.usage.decision(is_owner, trace.group_id)
         if scope:
             trace.budget_scope = scope
@@ -1083,7 +1083,7 @@ class Orchestrator(RunFlow):
         capture = self._captures.get(trace.run_id)
         if capture is None:
             return False
-        # A `#新版` regeneration: hand the answer back; no outbound row, no busy notice.
+        # A regeneration: hand the answer back; no outbound row, no busy notice.
         # A fallback reply (every answer attempt failed) is not an answer to send.
         fallback = "fallback_reply" in trace.degraded
         if not capture.done():

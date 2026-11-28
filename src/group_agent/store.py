@@ -29,10 +29,10 @@ CREATE INDEX IF NOT EXISTS archive_group_time ON archive(bot_id, group_id, time)
 MESSAGE_SOURCES = ("live", "backfill", "self_sync")
 # Sources stored after the run boundary but placed by platform time (`history`).
 LATE_SOURCES = ("backfill", "self_sync")
-# Message kinds: "chat", or "owner_command" (the owner's `#新版` command message, D-19:
-# never context material, `owner_command.NewVersionCommand.observe`).
+# Message kinds: "chat", or "owner_command" (an owner control command such as `#暂停`, or
+# a `#新版` command of releases before 0.5.0: never context material).
 MESSAGE_KINDS = ("chat", "owner_command")
-NEW_VERSION_PREFIX = "〔新版〕"  # = owner_command.PREFIX
+NEW_VERSION_PREFIX = "〔新版〕"  # sends of the `#新版` command (removed in 0.5.0)
 MESSAGES_COLUMNS_V6 = (
     "seq,bot_id,group_id,message_id,user_id,segments,revoked,platform_time,received_at,source"
 )
@@ -74,7 +74,7 @@ RUN_ACTIVE_STATES = ("queued", "running")
 # `message_id` the quoted question).
 RUN_PURPOSES = ("reply", "new_version")
 # Outbound states (T3.7, D-19, cutover). Record-only answers end `recorded_not_sent`. Live
-# rows (mode `live_send`: the owner's `#新版` command, `owner_command.py`, or every answer
+# rows (mode `live_send`: the `#新版` command of releases before 0.5.0, or every answer
 # and busy notice when `[serve] live_send` is on, `live_send.py`) go pending -> sending ->
 # sent | uncertain | failed. `uncertain` (timeout / connection lost after the frame was
 # written, or a process that ended mid-send) is never retried automatically (RUN-12).
@@ -1402,7 +1402,7 @@ class Store:
             "outbound_states": dict(
                 self.con.execute("SELECT state,count(*) FROM outbound GROUP BY state").fetchall()
             ),
-            # Only the owner's `#新版` command can reach `sent` (D-19, owner_command.py).
+            # Without live send only `#新版` sends of releases before 0.5.0 reached `sent`.
             "sent_to_qq": self._count("SELECT count(*) FROM outbound WHERE state='sent'"),
             "run_states": dict(
                 self.con.execute("SELECT state,count(*) FROM runs GROUP BY state").fetchall()

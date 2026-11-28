@@ -37,7 +37,6 @@ def create_app(instance, *, demo=False, allowed_hosts=None, controller_options=N
             "billing.db_path": str(instance / "demo" / "billing.sqlite3"),
             "collection.media_dir": str(instance / "demo" / "media"),
             "serve.live_send": False,
-            "serve.owner_command_send": False,
             "serve.processing_reaction": False,
             "serve.self_sync": False,
             "agent.web_enabled": False,

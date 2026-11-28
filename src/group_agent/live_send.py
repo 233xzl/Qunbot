@@ -18,7 +18,7 @@ opaque hook that only accepts ids of rows the flow wrote.
 2. a last re-check right before the frame: the request message is stored and not
    recalled, it is the requester's, requester and group are not blocked in the current
    access snapshot, and the final text check passes (no bot/owner/group/requester ids, no
-   account numbers, no key-like strings; `owner_command.final_text_check`); otherwise the
+   account numbers, no key-like strings; `send_check.final_text_check`); otherwise the
    row ends `failed` with the reason and nothing is sent;
 3. pending -> sending, atomically and once (`Store.claim_outbound`);
 4. the old bot's message shape: a reply segment quoting the request plus one text segment,
@@ -48,7 +48,7 @@ from .admission import AccessPolicy
 from .contracts import Message
 from .gateway import SendResult
 from .outbox import MAX_REPLY_CHARS
-from .owner_command import final_text_check
+from .send_check import final_text_check
 from .store import Store
 
 SEND_KINDS = ("answer", "busy_notice", "owner_control")

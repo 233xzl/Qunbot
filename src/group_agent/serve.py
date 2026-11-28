@@ -4,16 +4,12 @@ One forward WebSocket to the local SnowLuma (`gateway.OneBotGateway`, read-only 
 allowlist), event intake with collection and admission (`intake.EventIntake`), image
 collection and quote backfill, the run orchestrator (`orchestrator.Orchestrator`) with the
 live agent (`live_agent.LiveAgent`), the persistent usage ledger and the periodic
-retention cleanup. Answers end as `recorded_not_sent` outbound rows. The single exception
-(D-19) is the owner's `#新版` command (`owner_command.NewVersionCommand`), which may send
-one `〔新版〕` answer per question when `[serve] owner_command_send` / `--allow-owner-send`
-is on; it alone receives the gateway's send channel. D-20: with `[serve]
-processing_reaction` / `--reaction`, `reaction.ProcessingReaction` alone receives the
+retention cleanup. Answers end as `recorded_not_sent` outbound rows unless live send is on.
+D-20: with `[serve] processing_reaction` / `--reaction`, `reaction.ProcessingReaction` alone receives the
 gateway's reaction channel and puts the "processing" emoji on admitted requests.
 Cutover (D-21): with `[serve] live_send` / `--live-send`, `live_send.LiveSender` alone
 receives the gateway's answer channel; the orchestrator hands it the run id of each
-re-checked, rate-limited outbound row (`publisher`) and every answer is sent. The `#新版`
-command is then switched off (it would answer a second time).
+re-checked, rate-limited outbound row (`publisher`) and every answer is sent.
 
 `dry_models=True` replaces the model clients with local fakes (`dry_model_builder`): no
 credentials are loaded for models or search, every call costs 0, and the agent still goes
@@ -46,7 +42,6 @@ from .live_agent import LiveAgent, LiveConfig
 from .live_send import LiveSender
 from .media import ImageSourcePolicy, MediaCollector
 from .orchestrator import TEACHING_PENDING_TEXT, Orchestrator
-from .owner_command import NewVersionCommand
 from .owner_control import OwnerControl, PauseState
 from .reaction import ProcessingReaction
 from .retention import periodic_cleanup
@@ -270,7 +265,6 @@ async def _run_serve(
     connect: Callable[..., Any] | None = None,
     log: Callable[[str], None] = lambda _: None,
     stop: asyncio.Event | None = None,
-    owner_send: bool | None = None,
     self_sync: bool | None = None,
     snowluma_db: Path | None = None,
     reaction: bool | None = None,
@@ -290,10 +284,6 @@ async def _run_serve(
     (`billing.AccountBook`, `[billing] db_path`, source "serve"); dry runs never write it.
     A book that cannot be opened is logged and serving goes on without it.
 
-    `owner_send` (default: `settings.owner_command_send`) lets the owner's `#新版` command
-    send (D-19); the gateway then issues its single send channel straight to the command
-    handler. Everything else stays record-only either way.
-
     `self_sync` (default: `settings.self_sync`) reads the bot account's own messages from
     SnowLuma's message store read-only (`self_sync.SelfSync`; path `snowluma_db`, else
     `settings.snowluma_db`, else derived from the bot id).
@@ -303,22 +293,17 @@ async def _run_serve(
     `reaction.ProcessingReaction`, which the queue consumer calls after admission.
 
     `live_send` (default: `settings.live_send`, the cutover) sends every answer through
-    `live_send.LiveSender`, which alone gets the gateway's answer channel; the owner's
-    `#新版` sending is then off. `stop_file`: the process stops gracefully once that file
+    `live_send.LiveSender`, which alone gets the gateway's answer channel. `stop_file`: the process stops gracefully once that file
     exists (the launcher's stop script creates it).
 
     `owner_control` (default: `settings.owner_control`) enables the owner's `#暂停` / `#恢复`
     / `#状态` commands (`owner_control.OwnerControl`): the pause flag is persisted in the
     store and loaded here; while paused no reply run starts. Its confirmation goes through
     the live answer sender (`LiveSender.deliver`), or is only recorded without live send."""
-    owner_send = settings.owner_command_send if owner_send is None else owner_send
     owner_control = settings.owner_control if owner_control is None else owner_control
     self_sync = settings.self_sync if self_sync is None else self_sync
     reaction = settings.processing_reaction if reaction is None else reaction
     live_send = settings.live_send if live_send is None else live_send
-    if live_send and owner_send:
-        owner_send = False
-        log("live_send is on: the owner's #新版 command does not send")
     from .runtime import ServeSession
     from .config import SnowLumaCredentials
 
@@ -378,7 +363,6 @@ async def _run_serve(
             with store.con:
                 received_groups.stop_boundary(store.con, settings.bot_id, gid, left=True)
             holder["orchestrator"].cancel_group(gid)
-        holder["command"].observe(result)
         if owner_control:
             holder["control"].observe(result)
         if holder["sync"] is not None and result.seq is not None:
@@ -396,7 +380,6 @@ async def _run_serve(
         actions=READ_ONLY_ACTIONS,
         connect=connect,
         log=log,
-        owner_send=owner_send,
         reaction=reaction,
         answer_send=live_send,
     )
@@ -541,17 +524,6 @@ async def _run_serve(
         log=log,
     )
     stack.push_async_callback(holder["control"].aclose)
-    # D-19: the send channel (if enabled) goes straight into the command handler, which
-    # builds the only sender around it; nothing else in this process gets either.
-    holder["command"] = NewVersionCommand(
-        store,
-        access,
-        orchestrator,
-        channel=gateway.owner_send_channel() if owner_send else None,
-        limits=orchestrator.limits,
-        log=log,
-    )
-    stack.push_async_callback(holder["command"].aclose)
     session = ServeSession(
         replace(settings, live_send=live_send),
         orchestrator,
@@ -664,8 +636,6 @@ async def _run_serve(
         "group_info_cache": dict(groups.counts),
         "cleanup_runs": len(cleanup_reports),
         "injected_events": len(inject or []),
-        "owner_command_send": owner_send,
-        "owner_commands": dict(holder["command"].counts),
         "owner_control": {
             "enabled": owner_control,
             "paused": pause.paused,

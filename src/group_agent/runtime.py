@@ -193,12 +193,7 @@ class ServeSession:
 
         run_id = CURRENT_RUN.get()
         active = self.orchestrator.active.get(run_id)
-        return bool(
-            active
-            and (
-                active[0].user_id == self.settings.owner_id or run_id in self.orchestrator._captures
-            )
-        )
+        return bool(active and active[0].user_id == self.settings.owner_id)
 
     def check_call(self):
         from .runflow import CURRENT_RUN

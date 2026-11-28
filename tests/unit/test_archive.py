@@ -368,3 +368,15 @@ async def test_archive_command_imports_reports_and_clears(tmp_path, monkeypatch,
     off = replace(settings, archive=ArchiveSpec())
     monkeypatch.setattr(archive_cli, "_settings", lambda instance: off)
     assert archive_cli.main(["import", "--instance", str(tmp_path)]) == 1
+
+
+async def test_retired_owner_command_send_still_loads(tmp_path):
+    from group_agent.config_service import build_bundle
+
+    path = tmp_path / "settings.toml"
+    data = {"schema_version": 1, "serve": {"owner_command_send": True}}
+    bundle = build_bundle(data, path)
+    assert "owner_command_send" not in bundle.data.get("serve", {})
+    assert not hasattr(bundle.settings, "owner_command_send")
+    with pytest.raises(ConfigError):
+        build_bundle({"schema_version": 1, "serve": {"owner_command_sendx": True}}, path)

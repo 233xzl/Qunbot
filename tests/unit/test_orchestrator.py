@@ -914,3 +914,19 @@ async def test_forward_nodes_reach_answer_material(tmp_path, source):
     detail = json.loads(next(iter(h.runs().values()))["detail"])
     assert detail["forward"]["nodes_used"] == 1
     assert detail["forward"]["gaps"] == {"repeat_or_depth_limit": 1}
+
+
+async def test_regeneration_hands_the_answer_back_without_an_outbound_row():
+    """`generate_for` (scripts/replay_shadow.py): same run flow, answer returned, nothing
+    recorded or sent, and a second regeneration of the same command seq is refused."""
+    h = Harness()
+    h.feed(ev("m1", at=False, t=int(wall())))
+    seq = h.store.lookup("BOT", "G1", "m1")["seq"]
+    from group_agent.store import _message
+
+    m = _message(h.store.message_row(seq))
+    run_id, text = await h.orch.generate_for(m, seq, run_seq=seq)
+    assert text == "answer:m1" and run_id
+    assert h.outbound() == []
+    assert h.runs()["m1"]["purpose"] == "new_version"
+    assert await h.orch.generate_for(m, seq, run_seq=seq) == (None, None)

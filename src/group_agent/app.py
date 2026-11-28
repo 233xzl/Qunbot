@@ -188,8 +188,8 @@ def serve_main(parser, settings, args) -> int:
     if args.dry_models:
         # Fake models never reach QQ: their placeholder text must not be sent, and the
         # settings' send switches are overridden (explicit send flags are refused above).
-        args.no_live_send = args.no_owner_send = args.no_reaction = True
-        args.live_send = args.allow_owner_send = args.reaction = False
+        args.no_live_send = args.no_reaction = True
+        args.live_send = args.reaction = False
     db_path = args.db or settings.serve_db
     # The media directory belongs to this database (orphan cleanup deletes unknown files).
     media_root = media_dir_for(settings, args, db_path)
@@ -222,9 +222,6 @@ def serve_main(parser, settings, args) -> int:
                 inject=inject,
                 knowledge_path=args.knowledge,
                 log=log,
-                owner_send=False
-                if args.no_owner_send
-                else (True if args.allow_owner_send else None),
                 self_sync=False if args.no_self_sync else None,
                 snowluma_db=args.snowluma_db,
                 reaction=False if args.no_reaction else (True if args.reaction else None),
@@ -267,7 +264,6 @@ def cli_settings(args):
             overrides[key] = str(value.resolve())
     for positive, negative, key in (
         ("live_send", "no_live_send", "live_send"),
-        ("allow_owner_send", "no_owner_send", "owner_command_send"),
         ("reaction", "no_reaction", "processing_reaction"),
     ):
         if getattr(args, positive) or getattr(args, negative) or args.dry_models:
@@ -339,16 +335,6 @@ def main(argv=None) -> int:
         help="serve: knowledge base path (default: settings [knowledge] db_path)",
     )
     parser.add_argument(
-        "--allow-owner-send",
-        action="store_true",
-        help="serve: let the owner's #新版 command send its answer (D-19; the only send path)",
-    )
-    parser.add_argument(
-        "--no-owner-send",
-        action="store_true",
-        help="serve: record-only even when settings turn owner_command_send on",
-    )
-    parser.add_argument(
         "--reaction",
         action="store_true",
         help="serve: put the 'processing' emoji on admitted requests (D-20; off in the shadow)",
@@ -361,7 +347,7 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--live-send",
         action="store_true",
-        help="serve: send every answer to QQ (cutover; switches the #新版 command off)",
+        help="serve: send every answer to QQ",
     )
     parser.add_argument(
         "--no-live-send",
@@ -424,8 +410,6 @@ def main(argv=None) -> int:
         "no_web",
         "knowledge",
         "inject",
-        "allow_owner_send",
-        "no_owner_send",
         "no_self_sync",
         "snowluma_db",
         "reaction",
@@ -439,11 +423,9 @@ def main(argv=None) -> int:
             parser.error(f"--{flag.replace('_', '-')} requires --serve")
     if args.live_send and args.no_live_send:
         parser.error("--live-send and --no-live-send exclude each other")
-    for flag in ("live_send", "allow_owner_send", "reaction"):
+    for flag in ("live_send", "reaction"):
         if args.dry_models and getattr(args, flag):
             parser.error(f"--{flag.replace('_', '-')} cannot be combined with --dry-models")
-    if args.allow_owner_send and args.no_owner_send:
-        parser.error("--allow-owner-send and --no-owner-send exclude each other")
     if args.reaction and args.no_reaction:
         parser.error("--reaction and --no-reaction exclude each other")
     if args.dry_run and not args.cleanup:

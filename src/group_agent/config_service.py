@@ -60,7 +60,6 @@ GROUPS = {
     "budgets": {"deadline_seconds", "context_messages", "daily_cost_cny"},
     "serve": {
         "db_path",
-        "owner_command_send",
         "fallback_reply",
         "self_sync",
         "self_sync_interval_s",
@@ -90,6 +89,9 @@ GROUPS = {
     "model_roles": {"answer", "decision", "fallback"},
     "prompts": {"persona", "evidence", "reply_contract", "decision", "tool_decision", "search"},
 }
+# Fields that no longer have any effect. Published revisions that contain them still load
+# with their original digest; drafts made from them drop the fields.
+RETIRED_KEYS = {"serve": {"owner_command_send"}}  # the owner's `#新版` command (0.5.0)
 LATE_RUNTIME_DEFAULTS = {
     key: getattr(RuntimeLimits(), key) for key in ("group_admit_window_minutes", "group_admit_max")
 }
@@ -201,7 +203,7 @@ def validate_keys(data):
             if name == "search":
                 validate_search_prompt(text)
     for group, allowed in GROUPS.items():
-        _keys(data.get(group, {}), allowed, group)
+        _keys(data.get(group, {}), allowed | RETIRED_KEYS.get(group, set()), group)
     for name in ("models", "connections", "credentials"):
         if not isinstance(data.get(name, {}), dict):
             raise ConfigError(f"{name}: expected a table")
@@ -403,6 +405,8 @@ def build_bundle(data: dict, path: Path, overrides=None) -> ConfigBundle:
     for key, default in LATE_RUNTIME_DEFAULTS.items():
         if effective_data["runtime"].get(key) == default:
             effective_data["runtime"].pop(key)
+    # Retired settings were part of the effective values of older revisions.
+    effective_data["owner_command_send"] = data.get("serve", {}).get("owner_command_send", False)
     digest = hashlib.sha256(
         json.dumps(
             {
@@ -417,8 +421,11 @@ def build_bundle(data: dict, path: Path, overrides=None) -> ConfigBundle:
     sources = {
         k: "cli" if k in (overrides or {}) else "file" for k in supplied | set(overrides or {})
     }
-    # Old revisions keep their original integrity digest. Retire the shadow models
-    # only after verifying the same inputs used by the original release.
+    # Old revisions keep their original integrity digest. Retire the shadow models and
+    # retired fields only after verifying the same inputs used by the original release.
+    for group, keys in RETIRED_KEYS.items():
+        for key in keys:
+            data.get(group, {}).pop(key, None)
     retired = {name for name, spec in settings.models.items() if spec.protocol == "systemone"}
     if retired:
         refs = {settings.models[n].api_key_env for n in retired}

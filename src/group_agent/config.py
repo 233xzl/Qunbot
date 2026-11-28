@@ -131,8 +131,6 @@ class Settings:
     # T4.1/T4.3: the knowledge base (`knowledge_base.py`); None = no knowledge, teaching
     # recognised but not written. `load_settings` defaults to data/knowledge/.
     knowledge_db: Path | None = field(default=None, repr=False)
-    # D-19: the owner's `#新版` command may send (the only send path); off by default.
-    owner_command_send: bool = False
     # Fixed reply when every answer attempt of a run fails (recorded like an answer, run
     # marked `fallback_reply`); "" = no reply. The old bot's error message wording.
     fallback_reply: str = DEFAULT_FALLBACK_REPLY
@@ -145,8 +143,7 @@ class Settings:
     # trial (AstrBot reacts), on after the cutover. Emoji id is a QQ face id.
     processing_reaction: bool = False
     reaction_emoji_id: str = "424"
-    # Cutover (D-21, RUN-07..09): send every answer (`live_send.py`); off by default. When
-    # on, the owner's `#新版` command is switched off (it would answer twice).
+    # Cutover (D-21, RUN-07..09): send every answer (`live_send.py`); off by default.
     live_send: bool = False
     # Owner remote control (`owner_control.py`): the owner's `#暂停` / `#恢复` / `#状态`
     # in any group; the pause is persisted. On by default.
@@ -916,9 +913,6 @@ def parse_settings(data: dict, path: Path) -> Settings:
     knowledge_path = Path(knowledge_db)
     if not knowledge_path.is_absolute():
         knowledge_path = (path.resolve().parent / knowledge_path).resolve()
-    owner_send = serve.get("owner_command_send", False)
-    if not isinstance(owner_send, bool):
-        raise ConfigError("serve.owner_command_send: expected true or false")
     self_sync = serve.get("self_sync", True)
     if not isinstance(self_sync, bool):
         raise ConfigError("serve.self_sync: expected true or false")
@@ -990,7 +984,6 @@ def parse_settings(data: dict, path: Path) -> Settings:
         shadow_db=shadow_path,
         serve_db=serve_path,
         knowledge_db=knowledge_path,
-        owner_command_send=owner_send,
         fallback_reply=fallback_reply.strip(),
         self_sync=self_sync,
         self_sync_interval_s=sync_interval,

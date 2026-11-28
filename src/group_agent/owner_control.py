@@ -9,7 +9,7 @@ group message in any group the bot is in, from the configured owner id, whose to
 text without whitespace is exactly `#暂停`, `#恢复` or `#状态` (half-width `#`), with or
 without a mention of the bot and nothing else (no quote, no image, no other mention, no
 @all). Anyone else sending the same text is an ordinary message: no effect, no notice.
-Intake stores a recognised command flagged `kind='owner_command'` (like `#新版`): never a
+Intake stores a recognised command flagged `kind='owner_command'`: never a
 reply request, never context material, kept out of the related set by retention.
 
 Paused state:
@@ -22,7 +22,6 @@ Paused state:
   (`failed/paused`);
 - reply runs in flight at the moment of `#暂停` are cancelled through the normal cancel path
   (`Orchestrator.cancel_replies`); a frame already being written finishes and is recorded;
-- the owner's `#新版` regenerations are not affected;
 - `#恢复` clears the flag; nothing queued during the pause is answered afterwards.
 
 Every command is recorded once per command message (`control_events`: time, group, action,
@@ -38,7 +37,7 @@ the `deliver` hook (`LiveSender.deliver`: it re-checks the row - bot, owner, com
 stored and not recalled, group not blocked, final text check - and claims it once). This
 module holds no gateway and no channel. Without live send (shadow mode) the row is kept as
 `record_only` / `recorded_not_sent` and nothing is sent, also when `owner_command_send` is on:
-that switch belongs to `#新版` only.
+that switch no longer exists (the `#新版` command was removed in 0.5.0).
 
 An already-paused `#暂停` and an already-running `#恢复` answer with the current state line
 (like `#状态`). With `[serve] owner_control = false` the commands are ordinary messages and

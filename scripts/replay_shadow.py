@@ -6,7 +6,7 @@ API to a work database (default `data/serve/replay-<name>.sqlite3`, recreated ea
 nothing is written to the shadow store. In the copy the shadow trial's own reply runs (and
 their answer rows and context snapshots) are removed so each question can get a fresh run.
 
-Each question goes through `Orchestrator.generate_for` (the D-19 `#新版` regeneration path:
+Each question goes through `Orchestrator.generate_for` (the regeneration path:
 `RunFlow`, context strategy C, the store's visible history before the question, real
 models through `serve.build_live_config`), with a host clock that starts at the question's
 time so retention and the prompt's date see the question moment. The answer is handed
@@ -293,7 +293,7 @@ async def main_async(args) -> int:
 
     config.evidence_sink = capture_evidence
     # One host for all runs (a second Orchestrator would mark the first one's active runs
-    # interrupted at start-up); `generate_for` = the D-19 regeneration path.
+    # interrupted at start-up); `generate_for` = the regeneration path.
     orchestrator = Orchestrator(
         store,
         AccessPolicy.from_settings(settings),

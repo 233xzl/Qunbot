@@ -27,7 +27,7 @@ CLI 发布的版本在下次受控启动时采用。管理台支持在线应用�
 | `web` | search/fetch 和备用；独立搜索、读取价格 | WebBackends / GeminiSearchClient |
 | `prompts` | persona、evidence、reply_contract、decision、tool_decision、search 的文件路径 | `prompt_options`、模型调用、搜索客户端 |
 | `budgets` | 总期限 120 秒、上下文上限 80 条、每日普通用户上限 ¥3 | Settings.limits / RunFlow / UsageLedger |
-| `runtime` | 全局/用户并发 4/2、队列 32/4、3 搜 5 读、工具超时 25 秒、结束预留 30 秒、80%/100% 闸门；每群受理频率 `group_admit_max` / `group_admit_window_minutes`（默认不限、10 分钟） | 调度、发送限速、工具预算、每日预算判断、受理频率 |
+| `runtime` | 全局/用户并发 4/2、队列 32/4、3 搜 5 读、工具超时 25 秒、结束预留 30 秒、80%/100% 闸门；每群受理频率 `group_admit_max` / `group_admit_window_minutes`（默认不限、10 分钟，决定多少提问被回答）；发送限速 `group_min_interval_seconds` / `group_per_minute` / `account_per_minute`（同群间隔 2 秒、每群每分钟 10 条、账号所有群合计每分钟 20 条，只让已生成的消息排队顺延，不拒绝提问） | 调度、发送限速、工具预算、每日预算判断、受理频率 |
 | `archive` | 群聊文字归档，默认关闭；保留 180 天，每次提问最多搜索 3 次、读取 5 次 | 消息入库、`archive.HistoryTools`、清理计划 |
 | `session` | 群会话模式，默认关闭；闲置 20 分钟、上一轮 8,000 token 或满 120 分钟后重开一段；每轮最多带入 40 条新群消息 | LiveAgent 回答请求、`session.SessionManager` |
 | `collection` / `retention` | 采集、媒体下载；24 小时普通消息、7 天关联消息、2 GB 媒体 | MediaCollector / 清理计划与执行 |

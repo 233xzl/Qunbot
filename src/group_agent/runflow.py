@@ -221,7 +221,7 @@ class RunFlow:
 
     def capture_answer(self, trace: RunTrace, text: str, kind: str) -> bool:
         """True when the host takes this run's text itself instead of an outbound row
-        (online: the owner's `#新版` regeneration, D-19); the host ends the trace."""
+        (`Orchestrator.generate_for`); the host ends the trace."""
         return False
 
     async def before_publish(self, trace: RunTrace, mocks: Any) -> None:

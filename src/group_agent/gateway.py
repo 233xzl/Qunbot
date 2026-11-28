@@ -11,13 +11,10 @@ and action calls. This module owns that connection:
   `OneBotGateway.call` and in the connection wrapper that is the only object able to
   write a frame. With `allow_actions=False` (the shadow default) the connection is wrapped
   as receive-only and no frame is ever written.
-- The single write exception (D-19): with `owner_send=True` the gateway issues exactly
-  one `OwnerSendChannel` (`OWNER_SEND_ACTION` only), held by the owner's `#新版` command
-  handler (`owner_command.py`). `call()` still refuses every non-read action.
-- The cutover answer path (RUN-07..09): with `answer_send=True` the gateway issues exactly
-  one `AnswerSendChannel` (`OWNER_SEND_ACTION` only, its own grant), held by
+- The answer path (RUN-07..09): with `answer_send=True` the gateway issues exactly one
+  `AnswerSendChannel` (`SEND_ACTION` only, a module-private grant), held by
   `live_send.LiveSender`, which sends recorded answers after the run flow's pre-publish
-  check and send-rate wait.
+  check and send-rate wait. `call()` still refuses every non-read action.
 - The reaction (D-20): with `reaction=True` the gateway issues exactly one
   `ReactionChannel` (`REACTION_ACTION` = set_msg_emoji_like only, emoji fixed, set=true,
   rate-limited), held by `reaction.ProcessingReaction`.
@@ -86,20 +83,17 @@ class ActionFailed(GatewayError):
     """SnowLuma answered with a non-ok status, or the response had an unexpected shape."""
 
 
-# D-19: the only write action, reachable only through `OwnerSendChannel` (one per
-# gateway, issued once, and only when the gateway was built with `owner_send=True`).
-OWNER_SEND_ACTION = "send_group_msg"
-_OWNER_GRANT = object()  # module-private proof that a frame comes from OwnerSendChannel
-# Cutover (D-21, RUN-07..09): ordinary answers, reachable only through `AnswerSendChannel`
-# (one per gateway, issued once, only when the gateway was built with `answer_send=True`);
-# same action, its own grant, held by `live_send.LiveSender`.
+# Answers (D-21, RUN-07..09): the send action, reachable only through `AnswerSendChannel`
+# (one per gateway, issued once, only when the gateway was built with `answer_send=True`),
+# held by `live_send.LiveSender`.
+SEND_ACTION = "send_group_msg"
 _ANSWER_GRANT = object()  # module-private proof that a frame comes from AnswerSendChannel
 # D-20: the "processing" reaction, reachable only through `ReactionChannel` (one per
 # gateway, issued once, only when the gateway was built with `reaction=True`).
 REACTION_ACTION = "set_msg_emoji_like"
 _REACTION_GRANT = object()  # module-private proof that a frame comes from ReactionChannel
 _GRANTED_ACTIONS = {
-    OWNER_SEND_ACTION: (_OWNER_GRANT, _ANSWER_GRANT),
+    SEND_ACTION: (_ANSWER_GRANT,),
     REACTION_ACTION: (_REACTION_GRANT,),
 }
 
@@ -136,8 +130,8 @@ class ReceiveOnly:
 
 class ReadOnlyActions(ReceiveOnly):
     """Receive, close, and write allowlisted read-only action frames; the exceptions are
-    `OWNER_SEND_ACTION` carrying the module-private grant of `OwnerSendChannel` or of
-    `AnswerSendChannel`, and `REACTION_ACTION` carrying the one of `ReactionChannel`."""
+    `SEND_ACTION` carrying the module-private grant of `AnswerSendChannel`, and
+    `REACTION_ACTION` carrying the one of `ReactionChannel`."""
 
     async def send_action(
         self, action: str, params: dict[str, Any], echo: str, *, grant: object = None
@@ -329,16 +323,12 @@ class OneBotGateway:
         max_queued_events: int = 10_000,
         drain_timeout: float = 5.0,
         clock: Callable[[], float] = time.monotonic,
-        owner_send: bool = False,
         reaction: bool = False,
         answer_send: bool = False,
     ):
         self.url, self._token = url, token
         self.on_event = on_event
         self.allow_actions = allow_actions
-        # D-19: whether `owner_send_channel()` may issue the single send channel.
-        self._owner_send = bool(owner_send and allow_actions)
-        self._owner_channel_issued = False
         # Cutover: whether `answer_send_channel()` may issue the single answer channel.
         self._answer_send = bool(answer_send and allow_actions)
         self._answer_channel_issued = False
@@ -390,17 +380,6 @@ class OneBotGateway:
         if params is not None and not isinstance(params, dict):
             raise ActionRefused("bad_request")
         return await self._request(action, params, timeout, None, None)
-
-    def owner_send_channel(self) -> OwnerSendChannel:
-        """Issue the single `OWNER_SEND_ACTION` channel of this gateway (D-19). Refused unless
-        the gateway was built with `owner_send=True`, and refused on any second call, so
-        exactly one holder (the `#新版` command handler) can ever send."""
-        if not self._owner_send:
-            raise ActionRefused("owner_send_disabled")
-        if self._owner_channel_issued:
-            raise ActionRefused("owner_send_channel_taken")
-        self._owner_channel_issued = True
-        return OwnerSendChannel(self, _OWNER_GRANT)
 
     def answer_send_channel(self) -> AnswerSendChannel:
         """Issue the single answer-sending channel of this gateway (cutover, RUN-07..09).
@@ -627,9 +606,7 @@ class _GroupSendChannel:
         params = {"group_id": _platform_id(group_id), "message": segments}
         progress: dict = {}
         try:
-            data = await self._gateway._request(
-                OWNER_SEND_ACTION, params, timeout, self._grant, progress
-            )
+            data = await self._gateway._request(SEND_ACTION, params, timeout, self._grant, progress)
         except ActionTimeout:
             return SendResult("uncertain" if progress else "failed", None, "timeout")
         except GatewayDisconnected as exc:
@@ -643,15 +620,6 @@ class _GroupSendChannel:
         if isinstance(message_id, bool) or not isinstance(message_id, (str, int)):
             return SendResult("sent", None, "no_message_id")
         return SendResult("sent", str(message_id), None)
-
-
-class OwnerSendChannel(_GroupSendChannel):
-    """The owner's write capability (D-19), held by `owner_command.OwnerCommandSender`."""
-
-    def __init__(self, gateway: OneBotGateway, grant: object):
-        if grant is not _OWNER_GRANT:
-            raise ActionRefused("owner_send_disabled")
-        self._gateway, self._grant = gateway, grant
 
 
 class AnswerSendChannel(_GroupSendChannel):

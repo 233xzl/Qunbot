@@ -7,7 +7,7 @@ Checks before the action: the request must come from this process's intake (`adm
 and the store must atomically grant the claim (`Store.claim_reaction`): a queued live
 request of kind chat, received within `max_age_s`, never claimed before. The claim is
 persistent, so redelivered events and restarts never react twice. Backfilled and synced
-messages are not requests; the owner's `#新版` command is not a request either. A failed
+messages are not requests; owner control commands are not requests either. A failed
 reaction is recorded (`failed_<kind>[_<retcode>]`) and logged once; it never touches the run.
 
 Off by default (`[serve] processing_reaction`, `--reaction`): AstrBot reacts during the

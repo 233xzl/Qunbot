@@ -48,7 +48,7 @@ class FakeConnection:
             data = {"group_id": 1, "group_name": "测试群", "member_count": 3}
         elif action == "get_group_member_list":
             data = MEMBERS
-        elif action == "send_group_msg":  # fake platform: the owner's #新版 send (D-19)
+        elif action == "send_group_msg":  # fake platform: an answer send
             data = {"message_id": 9001}
         else:
             response = {"status": "failed", "retcode": 100, "echo": echo}
@@ -212,108 +212,15 @@ async def test_status_and_reactions_after_group_rate_decision(tmp_path):
     assert texts["s1"].endswith(texts["m2"])
 
 
-def _serve_with_command(tmp_path, owner_send):
-    question = message("m1", "U1", "你好")
-    command = {
-        **message("c1", "OWNER", "#新版"),
-        "message": [
-            {"type": "reply", "data": {"id": "m1"}},
-            {"type": "text", "data": {"text": "#新版"}},
-        ],
-    }
-    copycat = {**command, "message_id": "c2", "user_id": "U2"}
-    conn = FakeConnection([question, command, copycat])
-    db = tmp_path / "serve.sqlite3"
-
-    async def connect(*args, **kwargs):
-        return conn
-
-    async def scenario():
-        stop = asyncio.Event()
-
-        async def watcher():
-            for _ in range(200):
-                await asyncio.sleep(0.05)
-                if not db.exists():
-                    continue
-                probe = sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True)
-                try:
-                    sent = probe.execute(
-                        "SELECT count(*) FROM outbound WHERE kind='new_version' AND state='sent'"
-                    ).fetchone()[0]
-                    recorded = probe.execute(
-                        "SELECT count(*) FROM outbound WHERE state='recorded_not_sent'"
-                    ).fetchone()[0]
-                except sqlite3.OperationalError:
-                    sent = recorded = 0
-                finally:
-                    probe.close()
-                if sent or (not owner_send and recorded):
-                    await asyncio.sleep(0.3)
-                    break
-            stop.set()
-
-        watch = asyncio.create_task(watcher())
-        summary = await run_serve(
-            settings_for(tmp_path),
-            db_path=db,
-            media_root=tmp_path / "media",
-            duration=None,
-            dry_models=True,
-            budget_cny=0.01,
-            cleanup=False,
-            knowledge_path=None,
-            connect=connect,
-            stop=stop,
-            owner_send=owner_send,
-        )
-        await watch
-        return summary
-
-    return asyncio.run(scenario()), conn, db
-
-
-def test_serve_owner_command_sends_one_new_version_reply(tmp_path):
-    summary, conn, db = _serve_with_command(tmp_path, True)
-    sends = [f for f in conn.sent if f["action"] == "send_group_msg"]
-    assert len(sends) == 1
-    assert sends[0]["params"]["message"] == [
-        {"type": "reply", "data": {"id": "m1"}},
-        {"type": "text", "data": {"text": "〔新版〕" + DRY_ANSWER}},
-    ]
-    assert summary["sent_to_qq"] == 1 and summary["owner_command_send"] is True
-    assert summary["owner_commands"]["ignored_not_owner"] == 1
-    store = Store(db)
-    assert store.answer_map("BOT", "G1") == {"9001": "m1"}
-    store.close()
-
-
-def test_serve_owner_command_switched_off_never_sends(tmp_path):
-    summary, conn, _ = _serve_with_command(tmp_path, False)
-    assert not any(f["action"].startswith("send") for f in conn.sent)
-    assert summary["sent_to_qq"] == 0 and summary["owner_command_send"] is False
-    assert summary["owner_commands"].get("send_disabled") == 1
-
-
-def test_only_the_two_send_holders_hold_a_send_path():
-    """RUN-08 / D-19 / cutover: the send entries are the gateway's one-shot owner channel
-    (used only by owner_command.py) and its one-shot answer channel (used only by
-    live_send.py); run code (orchestrator/runflow/agent/usage) and serve hold no send
+def test_only_the_answer_sender_holds_a_send_path():
+    """RUN-08 / cutover: the only send entry is the gateway's one-shot answer channel, used
+    only by live_send.py; run code (orchestrator/runflow/agent/usage) and serve hold no send
     action, no channel type and no gateway handle; the orchestrator only gets the answer
     holder's `deliver` hook."""
     import inspect
     from pathlib import Path
 
-    from group_agent import (
-        gateway,
-        live_agent,
-        live_send,
-        orchestrator,
-        owner_command,
-        runflow,
-        serve,
-        usage,
-    )
+    from group_agent import gateway, live_agent, live_send, orchestrator, runflow, serve, usage
     from group_agent.store import OUTBOUND_STATES
 
     words = (
@@ -321,10 +228,8 @@ def test_only_the_two_send_holders_hold_a_send_path():
         "send_msg",
         "send_private_msg",
         "call_action",
-        "OWNER_SEND_ACTION",
-        "OwnerSendChannel",
+        "SEND_ACTION",
         "AnswerSendChannel",
-        "_OWNER_GRANT",
         "_ANSWER_GRANT",
         "grant=",
         "._request(",
@@ -337,35 +242,26 @@ def test_only_the_two_send_holders_hold_a_send_path():
         source = inspect.getsource(module)
         assert "gateway" not in source.replace("never calls the gateway", ""), module.__name__
         for word in (
-            "owner_send_channel",
             "answer_send_channel",
-            "OwnerCommandSender",
             "LiveSender",
-            "import owner_command",
             "import live_send",
             "from .live_send",
             "_channel",
         ):
             assert word not in source, (module.__name__, word)
-    # serve only passes each channel straight into its one holder, once.
+    # serve only passes the channel straight into its one holder, once.
     serve_source = inspect.getsource(serve)
-    assert serve_source.count("owner_send_channel(") == 1
-    assert "channel=gateway.owner_send_channel() if owner_send else None" in serve_source
-    assert "OwnerCommandSender" not in serve_source
     assert serve_source.count("answer_send_channel(") == 1
     assert "LiveSender(gateway.answer_send_channel(), store, access, log=log)" in serve_source
     assert serve_source.count("LiveSender(") == 1
-    # The send action exists in gateway.py (channels) and its two holders.
+    # The send action exists in gateway.py (the channel) and its one holder.
     root = Path(gateway.__file__).parent
     holders = {p.name for p in root.rglob("*.py") if "send_group_msg" in p.read_text("utf-8")}
-    assert holders == {"gateway.py", "owner_command.py", "live_send.py"}
-    senders = {p.name for p in root.rglob("*.py") if "OwnerCommandSender(" in p.read_text("utf-8")}
-    assert senders == {"owner_command.py"}
+    assert holders == {"gateway.py", "live_send.py"}
     issuers = {p.name for p in root.rglob("*.py") if "answer_send_channel(" in p.read_text("utf-8")}
     assert issuers == {"gateway.py", "serve.py"}
-    assert "send_group_msg(" in inspect.getsource(owner_command.OwnerCommandSender)
     assert "send_group_msg(" in inspect.getsource(live_send.LiveSender)
-    assert gateway.OWNER_SEND_ACTION not in READ_ONLY_ACTIONS
+    assert gateway.SEND_ACTION not in READ_ONLY_ACTIONS
     assert set(OUTBOUND_STATES) == {
         "pending",
         "recorded_not_sent",
@@ -420,8 +316,8 @@ def test_serve_cli_validation(capsys):
         main(["--shadow", "--dry-models"])
     assert "--dry-models requires --serve" in capsys.readouterr().err
     with pytest.raises(SystemExit):
-        main(["--shadow", "--allow-owner-send"])
-    assert "--allow-owner-send requires --serve" in capsys.readouterr().err
+        main(["--serve", "--allow-owner-send"])  # retired with the `#新版` command
+    assert "unrecognized arguments" in capsys.readouterr().err
     with pytest.raises(SystemExit):
         main(["--shadow", "--reaction"])
     assert "--reaction requires --serve" in capsys.readouterr().err

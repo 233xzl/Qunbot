@@ -861,7 +861,12 @@ function renderEditor() {
       section("runtime", "运行策略") +
       section("session", "群会话") +
       section("archive", "群聊归档") +
-      section("agent", "回答策略") +
+      section("agent", "回答策略", [
+        "decision_mode",
+        "answer_thinking",
+        "answer_tool_loop",
+        "answer_same_model_retry",
+      ]) +
       section("serve", "QQ 与发送策略") +
       section("collection", "消息与媒体采集");
   if (page === "budget")

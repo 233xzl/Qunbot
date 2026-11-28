@@ -24,9 +24,6 @@ usd_cny_date = "2026-11-14"
 
 [serve]
 db_path = "data/serve/serve.sqlite3"  # --serve store, relative to instance_root
-# D-19: the owner's `#新版` command may send its answer (the only send path). Enabled in the author preset;
-# `--allow-owner-send` also turns it on for one process.
-owner_command_send = true
 # D-21: fixed reply when every answer attempt fails (recorded like an answer, run marked
 # fallback_reply; clarify/teaching unaffected). "" = no reply. Default: the old bot's wording.
 # fallback_reply = "这个史暂时没解析成功，稍后再 @ 我试试。"
@@ -40,7 +37,7 @@ self_sync_interval_s = 5
 # (AstrBot reacts); turn on at the cutover. `--reaction` / `--no-reaction` override it.
 processing_reaction = true
 reaction_emoji_id = "424"
-# Cutover: send every answer (live_send.py; reply + text, rate-limited, re-checked). Enabled in the author preset; when on, the #新版 command does not send. `--live-send` / `--no-live-send`.
+# Cutover: send every answer (live_send.py; reply + text, rate-limited, re-checked). Enabled in the author preset. `--live-send` / `--no-live-send`.
 live_send = true
 # Owner remote control (owner_control.py): the owner sends #暂停 / #恢复 / #状态 (exact text, in
 # any group, with or without @bot) to pause or resume replies; the pause survives restarts.

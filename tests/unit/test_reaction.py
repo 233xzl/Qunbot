@@ -234,7 +234,7 @@ def test_reaction_channel_is_one_shot_and_only_when_enabled():
         asyncio.run(gw.call("set_msg_emoji_like", {"message_id": 1, "emoji_id": "424"}))
     from group_agent import gateway
 
-    for grant in (None, object(), gateway._OWNER_GRANT):  # the owner grant does not fit
+    for grant in (None, object(), gateway._ANSWER_GRANT):  # the answer grant does not fit
         with pytest.raises(ActionRefused):
             asyncio.run(
                 ReadOnlyActions(Ws()).send_action("set_msg_emoji_like", {}, "e", grant=grant)

@@ -113,7 +113,7 @@ _TIME_TOPIC = re.compile(
 )
 _QUESTION = re.compile(r"[?？吗呢嘛]|多少|几|什么|啥|哪|怎么样|如何|有没有|是不是|咋")
 _AT_PREFIX = re.compile(r"@\S+\s*")
-# A command-like request body ("#新版", "/help"): not a question to clarify.
+# A command-like request body ("#帮助", "/help"): not a question to clarify.
 _COMMAND_TEXT = re.compile(r"[#＃/／]\S{1,20}")
 # Context from the requester within this many seconds is a topic the request continues.
 RECENT_TOPIC_S = 300
@@ -1691,7 +1691,7 @@ class LiveAgent:
 
     def _session_view(self, trace: RunTrace, instructions: str, tools: list[str]):
         """The group session this run continues (`session.py`), or None: sessions off for
-        the group, a degraded-cost run, the owner's `#新版`, or a host without sessions."""
+        the group, a degraded-cost run, or a host without sessions."""
         host = self.replay
         manager, spec_for = getattr(host, "sessions", None), getattr(host, "session_spec", None)
         if manager is None or spec_for is None or trace.cost_mode != "normal":
@@ -2027,7 +2027,7 @@ class LiveAgent:
             if not cfg.fallback_reply_text:
                 raise LiveFailure(failure) from None
             # Fallback reply: published like an answer (record-only online), marked so it is
-            # never mistaken for a model answer (owner `#新版` neither reuses nor sends it).
+            # never mistaken for a model answer.
             state.record["answer_failed"] = failure
             state.record["answer_fallback_used"] = True
             trace.degraded.append("fallback_reply")

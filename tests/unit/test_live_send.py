@@ -16,7 +16,6 @@ from group_agent.gateway import (
     ActionRefused,
     AnswerSendChannel,
     OneBotGateway,
-    OwnerSendChannel,
     ReadOnlyActions,
     SendResult,
 )
@@ -107,7 +106,7 @@ class LiveHarness:
 # -- the channel ------------------------------------------------------------------------
 
 
-def test_answer_channel_is_one_shot_only_when_enabled_and_separate_from_the_owner_one():
+def test_answer_channel_is_one_shot_only_when_enabled():
     plain = OneBotGateway("ws://x", "t", allow_actions=True)
     with pytest.raises(ActionRefused):
         plain.answer_send_channel()
@@ -119,13 +118,9 @@ def test_answer_channel_is_one_shot_only_when_enabled_and_separate_from_the_owne
     with pytest.raises(ActionRefused):
         gw.answer_send_channel()  # nobody else can take a second one
     with pytest.raises(ActionRefused):
-        gw.owner_send_channel()  # the answer switch does not enable the owner channel
-    with pytest.raises(ActionRefused):
         AnswerSendChannel(gw, object())  # a forged grant
     with pytest.raises(ActionRefused):
-        AnswerSendChannel(gw, gateway._OWNER_GRANT)  # another channel's grant
-    with pytest.raises(ActionRefused):
-        OwnerSendChannel(gw, gateway._ANSWER_GRANT)
+        AnswerSendChannel(gw, gateway._REACTION_GRANT)  # another channel's grant
     with pytest.raises(ActionRefused):
         asyncio.run(gw.call("send_group_msg", {"group_id": 1, "message": []}))
 
@@ -576,7 +571,7 @@ def _serve_live(tmp_path, events, **kw):
     return asyncio.run(scenario()), conn, db
 
 
-def test_serve_live_send_sends_answers_and_switches_the_owner_command_off(tmp_path):
+def test_serve_live_send_sends_answers_and_ignores_the_retired_new_version_command(tmp_path):
     question = message("m1", "U1", "你好")
     command = {
         **message("c1", "OWNER", "#新版"),
@@ -585,14 +580,13 @@ def test_serve_live_send_sends_answers_and_switches_the_owner_command_off(tmp_pa
             {"type": "text", "data": {"text": "#新版"}},
         ],
     }
-    summary, conn, db = _serve_live(tmp_path, [question, command], live_send=True, owner_send=True)
+    summary, conn, db = _serve_live(tmp_path, [question, command], live_send=True)
     sends = [f for f in conn.sent if f["action"] == "send_group_msg"]
     assert [f["params"]["message"] for f in sends] == [
         [{"type": "reply", "data": {"id": "m1"}}, {"type": "text", "data": {"text": DRY_ANSWER}}]
     ]
     assert summary["mode"] == "serve_live_send" and summary["live_send"] is True
-    assert summary["owner_command_send"] is False
-    assert summary["owner_commands"].get("send_disabled") == 1
+    assert "owner_command_send" not in summary
     assert summary["live_sends"] == {"answer_sent": 1} and summary["sent_to_qq"] == 1
     store = Store(db)
     assert store.answer_map("BOT", "G1") == {"9001": "m1"}
